@@ -1,0 +1,25 @@
+{
+  "query": "\n-- 用户总数\nSELECT COUNT(*) as total_users FROM users;\n\n-- 按天注册趋势\nSELECT DATE(createdAt) as reg_date, COUNT(*) as new_users \nFROM users \nGROUP BY DATE(createdAt) \nORDER BY reg_date DESC \nLIMIT 30;\n\n-- 用户角色分布\nSELECT role, COUNT(*) as count FROM users GROUP BY role;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4X4kEZ5ZzWjACn8.ceec5373b537 --database ieT7v85aiPuCFersArU3SP --execute \n-- 用户总数\nSELECT COUNT(*) as total_users FROM users;\n\n-- 按天注册趋势\nSELECT DATE(createdAt) as reg_date, COUNT(*) as new_users \nFROM users \nGROUP BY DATE(createdAt) \nORDER BY reg_date DESC \nLIMIT 30;\n\n-- 用户角色分布\nSELECT role, COUNT(*) as count FROM users GROUP BY role;\n",
+  "rows": [
+    {
+      "total_users": "1"
+    },
+    {
+      "total_users": "reg_date\tnew_users"
+    },
+    {
+      "total_users": "2026-01-23\t1"
+    },
+    {
+      "total_users": "role\tcount"
+    },
+    {
+      "total_users": "admin\t1"
+    }
+  ],
+  "messages": [],
+  "stdout": "total_users\n1\nreg_date\tnew_users\n2026-01-23\t1\nrole\tcount\nadmin\t1\n",
+  "stderr": "",
+  "execution_time_ms": 92
+}

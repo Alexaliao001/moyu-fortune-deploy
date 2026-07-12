@@ -1,0 +1,15 @@
+# robots.txt for 摸了么 MoYu Fortune
+# https://chillworks.ai/
+
+User-agent: *
+Allow: /
+
+# Disallow admin and API routes
+Disallow: /api/
+Disallow: /payment/
+
+# Sitemap location
+Sitemap: https://chillworks.ai/sitemap.xml
+
+# Crawl delay (optional, be nice to servers)
+Crawl-delay: 1

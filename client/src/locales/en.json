@@ -1,0 +1,142 @@
+{
+  "app": {
+    "title": "MoYu",
+    "subtitle": "Can I slack today?",
+    "description": "Daily slacker fortune telling",
+    "footer": "ChillWorks · AI for Life"
+  },
+  "fortune": {
+    "clickToStart": "Click the coin or lever to check your slacking fortune",
+    "remainingDraws": "{{count}} draws remaining today",
+    "unlimited": "Unlimited draws",
+    "drawing": "Reading your fortune...",
+    "levels": {
+      "大吉": "Great",
+      "中吉": "Good",
+      "小吉": "Fair",
+      "末吉": "Minor",
+      "平": "Neutral",
+      "小凶": "Minor Bad",
+      "凶": "Bad"
+    },
+    "suggestedTime": "Suggested slacking time",
+    "hours": "hours",
+    "energyBar": "Slacking energy",
+    "beatPercent": "You beat {{percent}}% of office workers",
+    "drawAgain": "Try Again",
+    "share": "Share"
+  },
+  "membership": {
+    "title": "Membership",
+    "benefits": "Benefits",
+    "unlimited": "Unlimited draws",
+    "history": "History records",
+    "vipAvatar": "VIP avatars",
+    "currentStatus": "Current status",
+    "notMember": "Free user",
+    "member": "Member",
+    "lifetime": "Lifetime member",
+    "expiresAt": "Expires",
+    "subscribe": "Subscribe",
+    "plans": {
+      "monthly": "Monthly",
+      "quarterly": "Quarterly",
+      "yearly": "Yearly",
+      "lifetime": "Lifetime"
+    },
+    "perMonth": "/mo",
+    "oneTime": "One-time payment",
+    "popular": "Most Popular",
+    "bestValue": "Best Value",
+    "unlockMore": "Become a member · Unlock more features"
+  },
+  "history": {
+    "title": "History",
+    "empty": "No fortune records yet",
+    "memberOnly": "Members only",
+    "becomeMember": "Subscribe to view history"
+  },
+  "invite": {
+    "title": "Invite Friends",
+    "yourCode": "Your invite code",
+    "copyCode": "Copy code",
+    "copied": "Copied!",
+    "shareLink": "Share link",
+    "reward": "Rewards",
+    "rewardDesc": "Both you and your friend get 3 days membership",
+    "inviteCount": "Invited",
+    "people": "friends",
+    "earnedDays": "Days earned",
+    "days": " days"
+  },
+  "share": {
+    "title": "Share to",
+    "wechat": "WeChat",
+    "weibo": "Weibo",
+    "twitter": "X (Twitter)",
+    "instagram": "Instagram",
+    "copy": "Copy",
+    "saveImage": "Save image",
+    "generating": "Generating poster...",
+    "inviteTitle": "Share Invite",
+    "inviteSubtitle": "Invite friends to slack together, both get 3 days membership",
+    "saveCard": "Save Image",
+    "copyLink": "Copy Link",
+    "shareTo": "Share to",
+    "moreWays": "More Ways to Share",
+    "cardBrand": "MoYu",
+    "cardTag": "Invite Card",
+    "cardInvite": "invites you to slack together",
+    "cardCodeLabel": "Invite Code",
+    "cardReward": "Sign up with this code, both get 3 days membership",
+    "cardSlogan": "Check your slacking fortune today~",
+    "wechatSaveHint": "Image saved, please share on WeChat manually",
+    "wechatSaveDesc": "Long press to share to Moments"
+  },
+  "avatar": {
+    "title": "Choose avatar",
+    "vipOnly": "VIP only"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "back": "Back",
+    "save": "Save",
+    "close": "Close"
+  },
+  "payment": {
+    "success": "Payment Successful",
+    "successDesc": "Welcome to membership!",
+    "failed": "Payment Failed",
+    "failedDesc": "Payment was not completed. Please try again.",
+    "backToHome": "Back to Home"
+  },
+  "sound": {
+    "on": "Sound on",
+    "off": "Sound off"
+  },
+  "feedback": {
+    "title": "Feedback",
+    "subtitle": "Your suggestions help us improve",
+    "type": "Feedback type",
+    "types": {
+      "bug": "Bug report",
+      "feature": "Feature request",
+      "suggestion": "Suggestion",
+      "other": "Other"
+    },
+    "content": "Your feedback",
+    "contentPlaceholder": "Please describe your issue or suggestion in detail...",
+    "contact": "Contact info",
+    "contactPlaceholder": "Email or social media (optional)",
+    "submit": "Submit",
+    "submitting": "Submitting...",
+    "success": "Thank you for your feedback!",
+    "successDesc": "We've received your suggestion and will consider it carefully",
+    "error": "Failed to submit. Please try again later.",
+    "button": "Feedback"
+  }
+}

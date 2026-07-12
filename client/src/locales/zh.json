@@ -1,0 +1,142 @@
+{
+  "app": {
+    "title": "摸了么",
+    "subtitle": "今天能摸吗",
+    "description": "每日摸鱼运势占卜",
+    "footer": "ChillWorks · AI for Life"
+  },
+  "fortune": {
+    "clickToStart": "点击铜钱或拉杆，测测今天的摸鱼运势",
+    "remainingDraws": "今日剩余 {{count}} 次抽签",
+    "unlimited": "无限抽签",
+    "drawing": "正在占卜...",
+    "levels": {
+      "大吉": "大吉",
+      "中吉": "中吉",
+      "小吉": "小吉",
+      "末吉": "末吉",
+      "平": "平",
+      "小凶": "小凶",
+      "凶": "凶"
+    },
+    "suggestedTime": "建议摸鱼时长",
+    "hours": "小时",
+    "energyBar": "摸鱼体力槽",
+    "beatPercent": "击败了全国 {{percent}}% 的打工人",
+    "drawAgain": "再来一签",
+    "share": "分享结果"
+  },
+  "membership": {
+    "title": "会员中心",
+    "benefits": "会员权益",
+    "unlimited": "无限抽签",
+    "history": "历史记录",
+    "vipAvatar": "VIP头像",
+    "currentStatus": "当前状态",
+    "notMember": "非会员",
+    "member": "会员",
+    "lifetime": "永久会员",
+    "expiresAt": "到期时间",
+    "subscribe": "开通会员",
+    "plans": {
+      "monthly": "月卡",
+      "quarterly": "季卡",
+      "yearly": "年卡",
+      "lifetime": "永久会员"
+    },
+    "perMonth": "/月",
+    "oneTime": "一次性付款",
+    "popular": "最受欢迎",
+    "bestValue": "最划算",
+    "unlockMore": "开通会员 · 解锁更多摸鱼能力"
+  },
+  "history": {
+    "title": "历史记录",
+    "empty": "暂无抽签记录",
+    "memberOnly": "会员专属功能",
+    "becomeMember": "开通会员查看历史记录"
+  },
+  "invite": {
+    "title": "邀请有礼",
+    "yourCode": "你的邀请码",
+    "copyCode": "复制邀请码",
+    "copied": "已复制",
+    "shareLink": "分享链接",
+    "reward": "邀请奖励",
+    "rewardDesc": "每成功邀请1位好友，双方各得3天会员",
+    "inviteCount": "已邀请",
+    "people": "人",
+    "earnedDays": "获得天数",
+    "days": "天"
+  },
+  "share": {
+    "title": "分享到",
+    "wechat": "微信",
+    "weibo": "微博",
+    "twitter": "X (Twitter)",
+    "instagram": "Instagram",
+    "copy": "复制文案",
+    "saveImage": "保存图片",
+    "generating": "生成海报中...",
+    "inviteTitle": "分享邀请",
+    "inviteSubtitle": "邀请好友一起摸鱼，双方各得3天会员",
+    "saveCard": "保存图片",
+    "copyLink": "复制链接",
+    "shareTo": "分享到",
+    "moreWays": "更多分享方式",
+    "cardBrand": "摸了么",
+    "cardTag": "邀请卡",
+    "cardInvite": "邀请你一起摸鱼",
+    "cardCodeLabel": "专属邀请码",
+    "cardReward": "使用邀请码注册，双方各得3天会员",
+    "cardSlogan": "测测你今天能不能摸鱼~",
+    "wechatSaveHint": "图片已保存，请打开微信手动分享",
+    "wechatSaveDesc": "长按图片即可分享到朋友圈"
+  },
+  "avatar": {
+    "title": "选择头像",
+    "vipOnly": "VIP专属"
+  },
+  "common": {
+    "loading": "加载中...",
+    "error": "出错了",
+    "retry": "重试",
+    "cancel": "取消",
+    "confirm": "确认",
+    "back": "返回",
+    "save": "保存",
+    "close": "关闭"
+  },
+  "payment": {
+    "success": "支付成功",
+    "successDesc": "恭喜您成为会员！",
+    "failed": "支付失败",
+    "failedDesc": "支付未完成，请重试",
+    "backToHome": "返回首页"
+  },
+  "sound": {
+    "on": "开启音效",
+    "off": "关闭音效"
+  },
+  "feedback": {
+    "title": "意见反馈",
+    "subtitle": "您的建议对我们很重要",
+    "type": "反馈类型",
+    "types": {
+      "bug": "问题报告",
+      "feature": "功能建议",
+      "suggestion": "体验反馈",
+      "other": "其他"
+    },
+    "content": "反馈内容",
+    "contentPlaceholder": "请详细描述您的问题或建议...",
+    "contact": "联系方式",
+    "contactPlaceholder": "邮箱或微信（可选）",
+    "submit": "提交反馈",
+    "submitting": "提交中...",
+    "success": "感谢您的反馈！",
+    "successDesc": "我们已收到您的建议，会认真考虑并不断改进",
+    "error": "提交失败，请稍后重试",
+    "button": "反馈"
+  }
+}

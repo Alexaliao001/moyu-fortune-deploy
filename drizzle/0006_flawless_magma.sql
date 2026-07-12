@@ -1,0 +1,1 @@
+ALTER TABLE `fortune_history` MODIFY COLUMN `avatar` varchar(512);

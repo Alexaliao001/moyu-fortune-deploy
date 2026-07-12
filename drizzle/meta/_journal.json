@@ -1,0 +1,55 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1769175236582,
+      "tag": "0000_ambitious_matthew_murdock",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1769203517063,
+      "tag": "0001_nifty_nightshade",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1769204406526,
+      "tag": "0002_amazing_sentinels",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1769343798287,
+      "tag": "0003_sour_chronomancer",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1770154896119,
+      "tag": "0004_yellow_sheva_callister",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1770155331681,
+      "tag": "0005_loud_winter_soldier",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1770239933216,
+      "tag": "0006_flawless_magma",
+      "breakpoints": true
+    }
+  ]
+}

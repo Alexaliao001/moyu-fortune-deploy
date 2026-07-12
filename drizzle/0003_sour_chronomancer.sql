@@ -1,0 +1,1 @@
+ALTER TABLE `subscriptions` MODIFY COLUMN `plan` enum('monthly','quarterly','annual','lifetime') NOT NULL;
