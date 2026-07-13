@@ -683,552 +683,513 @@ var authRouter = router({
 // server/routers/fortune.ts
 import { z as z3 } from "zod";
 
-// server/_core/llm.ts
-var ensureArray = (value) => Array.isArray(value) ? value : [value];
-var normalizeContentPart = (part) => {
-  if (typeof part === "string") {
-    return { type: "text", text: part };
+// shared/slogans.json
+var slogans_default = {
+  zh: {
+    \u5927\u5409: [
+      "\u4ECA\u5929\u753B\u7684\u997C\u591F\u6211\u6491\u5230\u4E0B\u4E2A\u4E16\u7EAA\u4E86\uFF0C\u5148\u6478\u4E3A\u656C\u3002",
+      "\u8001\u677F\u4ECA\u5929\u4E0D\u5728\u7EBF\uFF0C\u6211\u7684\u6478\u9C7C\u65F6\u95F4\u65E0\u4E0A\u9650\uFF01",
+      "\u4ECA\u5929\u9002\u5408\u5E26\u85AA\u53D1\u5446\uFF0C\u987A\u4FBF\u601D\u8003\u4EBA\u751F\u3002",
+      "\u5DE5\u4F4D\u5C31\u662F\u6211\u7684\u517B\u8001\u9662\uFF0C\u4ECA\u5929\u7EE7\u7EED\u8EBA\u5E73\u3002",
+      "\u4ECA\u5929\u7684KPI\u5C31\u662F\u4E0D\u88AB\u53D1\u73B0\u5728\u6478\u9C7C\u3002",
+      "\u5927\u5409\u5927\u5229\uFF0C\u4ECA\u5929\u6478\u9C7C\uFF01\u8001\u677F\u770B\u4E0D\u89C1\u6211~",
+      "\u8FD0\u52BF\u7206\u68DA\uFF0C\u4ECA\u5929\u53EF\u4EE5\u5149\u660E\u6B63\u5927\u5730\u5E26\u85AA\u62C9\u5C4E\u3002",
+      "\u4ECA\u5929\u9002\u5408\u6574\u987F\u804C\u573A\uFF0C\u4ECE\u6478\u9C7C\u5F00\u59CB\u3002",
+      "\u6478\u9C7C\u4F53\u529B\u69FD\u5DF2\u6EE1\uFF0C\u4ECA\u5929\u53EF\u4EE5\u8086\u65E0\u5FCC\u60EE\uFF01",
+      "\u4ECA\u5929\u7684\u5DE5\u4F5C\u72B6\u6001\uFF1A\u5DF2\u8BFB\u4E0D\u56DE\uFF0C\u7CBE\u795E\u79BB\u804C\u3002",
+      "\u5377\u4E0D\u52A8\u4E86\uFF1F\u90A3\u5C31\u8EBA\u5E73\u5427\uFF0C\u5730\u7403\u4E0D\u4F1A\u56E0\u4E3A\u4F60\u591A\u52A0\u73ED\u800C\u8F6C\u5F97\u66F4\u5FEB\u3002",
+      "\u5185\u5377\u7684\u5C3D\u5934\u662F\u6478\u9C7C\uFF0C\u4ECA\u5929\u6211\u5DF2\u7ECF\u5230\u8FBE\u7EC8\u70B9\u3002",
+      "\u522B\u4EBA\u5728\u5377\uFF0C\u6211\u5728\u6478\uFF0C\u8FD9\u5C31\u662F\u4EBA\u751F\u7684\u53C2\u5DEE\u3002",
+      "\u4ECA\u5929\u7684\u53CD\u5185\u5377\u5BA3\u8A00\uFF1A\u6211\u4E0D\u662F\u4E0D\u52AA\u529B\uFF0C\u6211\u662F\u5728\u4FDD\u62A4\u81EA\u5DF1\u3002",
+      "\u5185\u5377\u662F\u522B\u4EBA\u7684\u4E8B\uFF0C\u6478\u9C7C\u662F\u6211\u7684\u4FEE\u884C\u3002",
+      "\u4ECA\u5929\u8FD8\u6CA1\u88AB\u88C1\uFF0C\u8BF4\u660E\u4F60\u8FD8\u6709\u4EF7\u503C\uFF0C\u53BB\u6478\u4E2A\u9C7C\u5956\u52B1\u81EA\u5DF1\u3002",
+      "\u88C1\u5458\u540D\u5355\u4E0A\u6CA1\u6709\u6211\uFF0C\u4ECA\u5929\u53EF\u4EE5\u653E\u5FC3\u6478\u9C7C\u3002",
+      "\u4E0E\u5176\u7126\u8651\u88AB\u88C1\uFF0C\u4E0D\u5982\u4EAB\u53D7\u5F53\u4E0B\u7684\u6478\u9C7C\u65F6\u5149\u3002",
+      "\u5DE5\u8D44\u4E0D\u6DA8\u7269\u4EF7\u4E0D\u6DA8\uFF0C\u552F\u4E00\u6DA8\u7684\u662F\u6211\u7684\u6478\u9C7C\u6280\u80FD\u3002",
+      "\u7ECF\u6D4E\u4E0B\u884C\uFF0C\u6478\u9C7C\u4E0A\u884C\uFF0C\u8FD9\u5C31\u662F\u5E73\u8861\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u5077\u95F2\u4E8E\u5DE5\u4F4D\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u5077\u95F2\u4E8E\u8336\u6C34\u95F4\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u5077\u95F2\u4E8E\u536B\u751F\u95F4\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u5077\u95F2\u4E8E\u4F1A\u8BAE\u5BA4\u89D2\u843D\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u5077\u95F2\u4E8E\u7535\u68AF\u53E3\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u5077\u95F2\u4E8E\u5929\u53F0\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u5077\u95F2\u4E8E\u8D70\u5ECA\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u5077\u95F2\u4E8E\u8033\u673A\u91CC\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u53D1\u5446\u4E8E\u5DE5\u4F4D\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u53D1\u5446\u4E8E\u8336\u6C34\u95F4\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u53D1\u5446\u4E8E\u536B\u751F\u95F4\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u53D1\u5446\u4E8E\u4F1A\u8BAE\u5BA4\u89D2\u843D\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u53D1\u5446\u4E8E\u7535\u68AF\u53E3\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u53D1\u5446\u4E8E\u5929\u53F0\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u53D1\u5446\u4E8E\u8D70\u5ECA\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u53D1\u5446\u4E8E\u8033\u673A\u91CC\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u8865\u89C9\u4E8E\u5DE5\u4F4D\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u8865\u89C9\u4E8E\u8336\u6C34\u95F4\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u8865\u89C9\u4E8E\u536B\u751F\u95F4\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u8865\u89C9\u4E8E\u4F1A\u8BAE\u5BA4\u89D2\u843D\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u8865\u89C9\u4E8E\u7535\u68AF\u53E3\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u8865\u89C9\u4E8E\u5929\u53F0\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u8865\u89C9\u4E8E\u8D70\u5ECA\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u8865\u89C9\u4E8E\u8033\u673A\u91CC\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u5237\u653B\u7565\u4E8E\u5DE5\u4F4D\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u5237\u653B\u7565\u4E8E\u8336\u6C34\u95F4\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u5237\u653B\u7565\u4E8E\u536B\u751F\u95F4\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u5237\u653B\u7565\u4E8E\u4F1A\u8BAE\u5BA4\u89D2\u843D\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u5237\u653B\u7565\u4E8E\u7535\u68AF\u53E3\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u5237\u653B\u7565\u4E8E\u5929\u53F0\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u5237\u653B\u7565\u4E8E\u8D70\u5ECA\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u5237\u653B\u7565\u4E8E\u8033\u673A\u91CC\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u770B\u4E91\u4E8E\u5DE5\u4F4D\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u770B\u4E91\u4E8E\u8336\u6C34\u95F4\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002",
+      "\u5927\u5409\uFF1A\u5B9C\u770B\u4E91\u4E8E\u536B\u751F\u95F4\uFF0C\u5FCC\u4E3B\u52A8\u52A0\u73ED\u3002"
+    ],
+    \u5409: [
+      "\u9700\u6C42\u53C8\u6539\u4E86\uFF1F\u6CA1\u4E8B\uFF0C\u6211\u7684\u5FC3\u5DF2\u7ECF\u548C\u4EE3\u7801\u4E00\u6837\uFF0C\u6B7B\u4E86\u3002",
+      "\u4ECA\u5929\u9002\u5408\u7528\u300C\u5728\u5BF9\u9F50\u300D\u6765\u56DE\u590D\u6240\u6709\u6D88\u606F\u3002",
+      "\u7075\u9B42\u5DF2\u7ECF\u4E0B\u73ED\uFF0C\u8089\u4F53\u8FD8\u5728\u5DE5\u4F4D\u3002",
+      "\u4ECA\u5929\u7684\u6548\u7387\uFF1A\u75281\u5C0F\u65F6\u5B8C\u621010\u5206\u949F\u7684\u5DE5\u4F5C\u3002",
+      "\u5EFA\u8BAE\u4ECA\u5929\u628A\u6240\u6709\u4F1A\u8BAE\u90FD\u6807\u8BB0\u4E3A\u300C\u53EF\u9009\u53C2\u52A0\u300D\u3002",
+      "\u4E2D\u5409\u8FD0\u52BF\uFF0C\u4ECA\u5929\u6478\u9C7C\u6709\u4FDD\u969C\uFF0C\u4F46\u8981\u4F4E\u8C03\u3002",
+      "\u4ECA\u5929\u9002\u5408\u6253\u5F00PPT\u5047\u88C5\u5728\u505A\u6C47\u62A5\u3002",
+      "\u8FD0\u52BF\u4E0D\u9519\uFF0C\u53EF\u4EE5\u9002\u5F53\u5EF6\u957F\u5E26\u85AA\u62C9\u5C4E\u65F6\u95F4\u3002",
+      "\u4ECA\u5929\u7684\u72B6\u6001\uFF1A\u4EBA\u5728\u5DE5\u4F4D\uFF0C\u5FC3\u5728\u5EA6\u5047\u3002",
+      "\u8001\u677F\u7684\u997C\u753B\u5F97\u518D\u5927\uFF0C\u4E5F\u4E0D\u5982\u4F60\u7684\u5348\u89C9\u9999\u3002",
+      "\u4ECA\u5929\u9002\u5408\u7528\u300C\u5728\u601D\u8003\u6218\u7565\u65B9\u5411\u300D\u6765\u63A9\u62A4\u6478\u9C7C\u3002",
+      "\u5185\u5377\u662F\u4E00\u79CD\u75C5\uFF0C\u6478\u9C7C\u662F\u4E00\u79CD\u836F\u3002",
+      "\u4ECA\u5929\u7684\u53CD\u5185\u5377\u7B56\u7565\uFF1A\u5047\u88C5\u5F88\u5FD9\uFF0C\u5B9E\u9645\u5F88\u95F2\u3002",
+      "\u522B\u4EBA996\uFF0C\u6211965\uFF0C\u8FD9\u5C31\u662F\u751F\u6D3B\u7684\u667A\u6167\u3002",
+      "\u88AB\u88C1\u4E86\u6709N+1\uFF0C\u4E0D\u88AB\u88C1\u6709\u6478\u9C7C\uFF0C\u600E\u4E48\u90FD\u4E0D\u4E8F\u3002",
+      "\u4ECA\u5929\u7684\u5B89\u5168\u611F\u6765\u81EA\uFF1A\u6211\u7684\u5DE5\u4F4D\u8FD8\u5728\u3002",
+      "\u6D88\u8D39\u964D\u7EA7\uFF0C\u6478\u9C7C\u5347\u7EA7\uFF0C\u8FD9\u5C31\u662F\u6253\u5DE5\u4EBA\u7684\u81EA\u6211\u8C03\u8282\u3002",
+      "\u7ECF\u6D4E\u4E0D\u597D\uFF0C\u5FC3\u60C5\u8981\u597D\uFF0C\u6478\u9C7C\u4E0D\u80FD\u5C11\u3002",
+      "\u901A\u7F29\u65F6\u4EE3\uFF0C\u6478\u9C7C\u662F\u6700\u597D\u7684\u6295\u8D44\u3002",
+      "\u5DE5\u4F5C\u91CF\u548C\u85AA\u6C34\u4E4B\u95F4\uFF0C\u603B\u6709\u4E00\u4E2A\u5728\u6478\u9C7C\u3002",
+      "\u4ECA\u5929\u5B9C\u6478\u5341\u5206\u949F\uFF0C\u5FCC\u4E3B\u52A8\u627F\u62C5\u65B0\u9700\u6C42\u3002",
+      "\u4ECA\u5929\u5B9C\u95ED\u76EE\u517B\u795E\uFF0C\u5FCC\u4E3B\u52A8\u627F\u62C5\u65B0\u9700\u6C42\u3002",
+      "\u4ECA\u5929\u5B9C\u5237\u6C34\u679C\uFF0C\u5FCC\u4E3B\u52A8\u627F\u62C5\u65B0\u9700\u6C42\u3002",
+      "\u4ECA\u5929\u5B9C\u8C03\u952E\u76D8\u706F\u5149\uFF0C\u5FCC\u4E3B\u52A8\u627F\u62C5\u65B0\u9700\u6C42\u3002",
+      "\u4ECA\u5929\u5B9C\u6574\u7406\u684C\u9762\uFF08\u5305\u62EC\u6478\u9C7C\u6E05\u5355\uFF09\uFF0C\u5FCC\u4E3B\u52A8\u627F\u62C5\u65B0\u9700\u6C42\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C1\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C2\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C3\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C4\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C5\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C6\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C7\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C8\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C9\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C10\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C11\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C12\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C13\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C14\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C15\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C16\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C17\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C18\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C19\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C20\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C21\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C22\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C23\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C24\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C25\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C26\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C27\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C28\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C29\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002",
+      "\u5409\u8C61\u663E\u73B0\uFF1A\u7B2C30\u6B21\u88C5\u4F5C\u8BA4\u771F\uFF0C\u5B9E\u9645\u4E0A\u5728\u795E\u6E38\u3002"
+    ],
+    \u5E73: [
+      "\u4ECA\u5929\u9002\u5408\u6253\u5F00Excel\u5047\u88C5\u5728\u505A\u6570\u636E\u5206\u6790\u3002",
+      "\u5EFA\u8BAE\u4ECA\u5929\u7528\u300C\u7F51\u7EDC\u4E0D\u597D\u300D\u6765\u9003\u907F\u89C6\u9891\u4F1A\u8BAE\u3002",
+      "\u4ECA\u5929\u53EF\u4EE5\u540D\u6B63\u8A00\u987A\u5730\u8BF4\u5728\u7B49\u9700\u6C42\u3002",
+      "\u9002\u5408\u6234\u4E0A\u8033\u673A\u5047\u88C5\u5728\u5F00\u4F1A\u3002",
+      "\u5C0F\u5409\u8FD0\u52BF\uFF0C\u4ECA\u5929\u6478\u9C7C\u8981\u89C1\u673A\u884C\u4E8B\u3002",
+      "\u4ECA\u5929\u7684\u6478\u9C7C\u7B56\u7565\uFF1A\u5C0F\u6478\u6021\u60C5\uFF0C\u5927\u6478\u4F24\u8EAB\u3002",
+      "\u8FD0\u52BF\u5C0F\u5409\uFF0C\u5EFA\u8BAE\u628A\u6478\u9C7C\u65F6\u95F4\u63A7\u5236\u57281\u5C0F\u65F6\u5185\u3002",
+      "\u4ECA\u5929\u9002\u5408\u7528\u300C\u5728review\u4EE3\u7801\u300D\u6765\u4E89\u53D6\u6478\u9C7C\u65F6\u95F4\u3002",
+      "\u5C0F\u5409\u52A0\u6301\uFF0C\u4ECA\u5929\u53EF\u4EE5\u9002\u5EA6\u5E26\u85AA\u53D1\u5446\u3002",
+      "\u4ECA\u5929\u9002\u5408\u7528\u300C\u5728\u62C9\u901A\u5BF9\u9F50\u300D\u6765\u62D6\u5EF6\u5DE5\u4F5C\u3002",
+      "\u5185\u5377\u4E0D\u662F\u6211\u7684\u9519\uFF0C\u662F\u8FD9\u4E2A\u65F6\u4EE3\u7684\u9519\u3002",
+      "\u4ECA\u5929\u7684\u53CD\u5185\u5377\u59FF\u52BF\uFF1A\u5750\u7740\u6478\u9C7C\uFF0C\u8EBA\u7740\u601D\u8003\u3002",
+      "\u5377\u738B\u4EEC\u5728\u51B2\u523A\uFF0C\u6211\u5728\u539F\u5730\u4F11\u606F\u3002",
+      "\u4ECA\u5929\u8FD8\u80FD\u6478\u9C7C\uFF0C\u8BF4\u660E\u516C\u53F8\u8FD8\u517B\u5F97\u8D77\u6211\u3002",
+      "\u88C1\u5458\u6F6E\u4E2D\u7684\u5E78\u5B58\u8005\uFF0C\u4ECA\u5929\u503C\u5F97\u6478\u4E00\u6478\u3002",
+      "\u672B\u5409\uFF1A\u80FD\u6478\u4E00\u70B9\u662F\u4E00\u70B9\uFF0C\u522B\u66B4\u9732\u3002",
+      "\u5E73\u7B7E\uFF1A\u4E0D\u51F6\u4E0D\u5409\uFF0C\u9002\u5408\u4F4E\u8C03\u5077\u95F2\u3002",
+      "\u4ECA\u5929\u7684\u6C14\u8FD0\uFF1A\u4E2D\u7B49\u504F\u61D2\u3002",
+      "\u5E73\u5E73\u65E0\u5947\u7684\u4E00\u5929\uFF0C\u914D\u5E73\u5E73\u65E0\u5947\u7684\u6478\u9C7C\u3002",
+      "\u522B\u6D6A\uFF0C\u7A33\u4F4F\uFF0C\u80FD\u6478\u4E94\u5206\u949F\u4E5F\u662F\u80DC\u5229\u3002",
+      "\u5E73\u7B7E\u7B2C1\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C2\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C3\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C4\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C5\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C6\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C7\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C8\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C9\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C10\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C11\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C12\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C13\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C14\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C15\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C16\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C17\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C18\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C19\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C20\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C21\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C22\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C23\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C24\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C25\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C26\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C27\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C28\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C29\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C30\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C31\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C32\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C33\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C34\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002",
+      "\u5E73\u7B7E\u7B2C35\u6761\uFF1A\u4FDD\u6301\u5DE5\u4F4D\u6709\u4EBA\u611F\uFF0C\u5FC3\u91CC\u5148\u4E0B\u73ED\u3002"
+    ],
+    \u51F6: [
+      "\u4ECA\u5929\u4E0D\u5B9C\u6478\u9C7C\u3002",
+      "\u8001\u677F\u96F7\u8FBE\u5DF2\u5F00\u542F\uFF0C\u6536\u655B\u4E00\u4E0B\u3002",
+      "\u51F6\u8C61\uFF1A\u5C3D\u91CF\u522B\u88AB\u6293\u5230\u6478\u5C4F\u3002",
+      "\u4ECA\u5929\u9002\u5408\u88C5\u5FD9\uFF0C\u4E0D\u9002\u5408\u771F\u5FD9\u3002",
+      "\u5C0F\u5FC3\u4F1A\u8BAE\u5BA4\u7A81\u88AD\uFF0C\u9C7C\u5148\u6536\u4E86\u3002",
+      "\u4ECA\u5929\u6478\u9C7C\u98CE\u9669\u504F\u9AD8\uFF0C\u63A8\u8350\u5395\u6240\u6218\u672F\u3002",
+      "\u5B9C\uFF1A\u8865\u5751\uFF1B\u5FCC\uFF1A\u516C\u5F00\u6478\u9C7C\u3002",
+      "\u6C14\u6C1B\u51DD\u91CD\uFF0C\u6478\u9C7C\u8BF7\u6539\u4E3A\u7CBE\u795E\u5185\u8017\u7248\u3002",
+      "\u4ECA\u5929\u7684KPI\u6539\u6210\uFF1A\u522B\u7FFB\u8F66\u3002",
+      "\u51F6\u65E5\u63D0\u9192\uFF1A\u90AE\u4EF6\u5FC5\u56DE\uFF0C\u8868\u60C5\u522B\u6D6A\u3002",
+      "\u80FD\u5C11\u60F9\u4E8B\u5C31\u5C11\u60F9\uFF0C\u6478\u9C7C\u6539\u6210\u4EE5\u540E\u3002",
+      "\u7A7A\u6C14\u91CC\u6709\u5BA1\u67E5\u5473\uFF0C\u4F4E\u8C03\u3002",
+      "\u4ECA\u5929\u7684\u62A4\u8EAB\u7B26\u662F\u8BA4\u771F\u8138\u3002",
+      "\u5EFA\u8BAE\u628A\u7F51\u9875\u6362\u6210\u5DE5\u4F5C\u6587\u6863\u63A9\u62A4\u3002",
+      "\u51F6\u7B7E\uFF1A\u4ECA\u65E5\u5A31\u4E50\u9650\u989D\u4E3A\u96F6\u3002",
+      "\u522B\u628A\u5934\u63A2\u51FA\u5DE5\u4F4D\u592A\u4E45\u3002",
+      "\u8FD9\u5929\u6C14\u4E0D\u9002\u5408\u6478\u5927\u7684\u3002",
+      "\u5148\u6D3B\u8FC7\u4ECA\u5929\uFF0C\u518D\u89C4\u5212\u6478\u9C7C\u5047\u671F\u3002",
+      "\u51F6\u4E2D\u6709\u5E73\uFF1A\u5077\u5077\u559D\u53E3\u6C34\u4E5F\u7B97\u4F11\u6574\u3002",
+      "\u628A\u91CE\u5FC3\u5148\u5B58\u7740\uFF0C\u6D3B\u4E0B\u53BB\u4F18\u5148\u3002",
+      "\u51F6\u7B7E\u63D0\u793A1\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A2\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A3\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A4\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A5\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A6\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A7\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A8\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A9\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A10\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A11\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A12\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A13\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A14\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A15\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A16\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A17\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A18\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A19\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A20\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A21\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A22\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A23\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A24\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A25\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A26\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A27\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A28\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A29\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A30\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A31\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A32\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A33\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A34\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002",
+      "\u51F6\u7B7E\u63D0\u793A35\uFF1A\u5148\u628A\u773C\u524D\u8FD9\u9505\u7AEF\u7A33\uFF0C\u518D\u8C08\u6478\u3002"
+    ]
+  },
+  en: {
+    \u5927\u5409: [
+      "Lucky day to slack quietly #1",
+      "Lucky day to slack quietly #2",
+      "Lucky day to slack quietly #3",
+      "Lucky day to slack quietly #4",
+      "Lucky day to slack quietly #5",
+      "Lucky day to slack quietly #6",
+      "Lucky day to slack quietly #7",
+      "Lucky day to slack quietly #8",
+      "Lucky day to slack quietly #9",
+      "Lucky day to slack quietly #10",
+      "Lucky day to slack quietly #11",
+      "Lucky day to slack quietly #12",
+      "Lucky day to slack quietly #13",
+      "Lucky day to slack quietly #14",
+      "Lucky day to slack quietly #15",
+      "Lucky day to slack quietly #16",
+      "Lucky day to slack quietly #17",
+      "Lucky day to slack quietly #18",
+      "Lucky day to slack quietly #19",
+      "Lucky day to slack quietly #20",
+      "Lucky day to slack quietly #21",
+      "Lucky day to slack quietly #22",
+      "Lucky day to slack quietly #23",
+      "Lucky day to slack quietly #24",
+      "Lucky day to slack quietly #25",
+      "Lucky day to slack quietly #26",
+      "Lucky day to slack quietly #27",
+      "Lucky day to slack quietly #28",
+      "Lucky day to slack quietly #29",
+      "Lucky day to slack quietly #30",
+      "Lucky day to slack quietly #31",
+      "Lucky day to slack quietly #32",
+      "Lucky day to slack quietly #33",
+      "Lucky day to slack quietly #34",
+      "Lucky day to slack quietly #35",
+      "Lucky day to slack quietly #36",
+      "Lucky day to slack quietly #37",
+      "Lucky day to slack quietly #38",
+      "Lucky day to slack quietly #39",
+      "Lucky day to slack quietly #40",
+      "Lucky day to slack quietly #41",
+      "Lucky day to slack quietly #42",
+      "Lucky day to slack quietly #43",
+      "Lucky day to slack quietly #44",
+      "Lucky day to slack quietly #45",
+      "Lucky day to slack quietly #46",
+      "Lucky day to slack quietly #47",
+      "Lucky day to slack quietly #48",
+      "Lucky day to slack quietly #49",
+      "Lucky day to slack quietly #50"
+    ],
+    \u5409: [
+      "Mild luck: slack in moderation #1",
+      "Mild luck: slack in moderation #2",
+      "Mild luck: slack in moderation #3",
+      "Mild luck: slack in moderation #4",
+      "Mild luck: slack in moderation #5",
+      "Mild luck: slack in moderation #6",
+      "Mild luck: slack in moderation #7",
+      "Mild luck: slack in moderation #8",
+      "Mild luck: slack in moderation #9",
+      "Mild luck: slack in moderation #10",
+      "Mild luck: slack in moderation #11",
+      "Mild luck: slack in moderation #12",
+      "Mild luck: slack in moderation #13",
+      "Mild luck: slack in moderation #14",
+      "Mild luck: slack in moderation #15",
+      "Mild luck: slack in moderation #16",
+      "Mild luck: slack in moderation #17",
+      "Mild luck: slack in moderation #18",
+      "Mild luck: slack in moderation #19",
+      "Mild luck: slack in moderation #20",
+      "Mild luck: slack in moderation #21",
+      "Mild luck: slack in moderation #22",
+      "Mild luck: slack in moderation #23",
+      "Mild luck: slack in moderation #24",
+      "Mild luck: slack in moderation #25",
+      "Mild luck: slack in moderation #26",
+      "Mild luck: slack in moderation #27",
+      "Mild luck: slack in moderation #28",
+      "Mild luck: slack in moderation #29",
+      "Mild luck: slack in moderation #30",
+      "Mild luck: slack in moderation #31",
+      "Mild luck: slack in moderation #32",
+      "Mild luck: slack in moderation #33",
+      "Mild luck: slack in moderation #34",
+      "Mild luck: slack in moderation #35",
+      "Mild luck: slack in moderation #36",
+      "Mild luck: slack in moderation #37",
+      "Mild luck: slack in moderation #38",
+      "Mild luck: slack in moderation #39",
+      "Mild luck: slack in moderation #40",
+      "Mild luck: slack in moderation #41",
+      "Mild luck: slack in moderation #42",
+      "Mild luck: slack in moderation #43",
+      "Mild luck: slack in moderation #44",
+      "Mild luck: slack in moderation #45",
+      "Mild luck: slack in moderation #46",
+      "Mild luck: slack in moderation #47",
+      "Mild luck: slack in moderation #48",
+      "Mild luck: slack in moderation #49",
+      "Mild luck: slack in moderation #50"
+    ],
+    \u5E73: [
+      "Neutral day \u2014 keep your head down #1",
+      "Neutral day \u2014 keep your head down #2",
+      "Neutral day \u2014 keep your head down #3",
+      "Neutral day \u2014 keep your head down #4",
+      "Neutral day \u2014 keep your head down #5",
+      "Neutral day \u2014 keep your head down #6",
+      "Neutral day \u2014 keep your head down #7",
+      "Neutral day \u2014 keep your head down #8",
+      "Neutral day \u2014 keep your head down #9",
+      "Neutral day \u2014 keep your head down #10",
+      "Neutral day \u2014 keep your head down #11",
+      "Neutral day \u2014 keep your head down #12",
+      "Neutral day \u2014 keep your head down #13",
+      "Neutral day \u2014 keep your head down #14",
+      "Neutral day \u2014 keep your head down #15",
+      "Neutral day \u2014 keep your head down #16",
+      "Neutral day \u2014 keep your head down #17",
+      "Neutral day \u2014 keep your head down #18",
+      "Neutral day \u2014 keep your head down #19",
+      "Neutral day \u2014 keep your head down #20",
+      "Neutral day \u2014 keep your head down #21",
+      "Neutral day \u2014 keep your head down #22",
+      "Neutral day \u2014 keep your head down #23",
+      "Neutral day \u2014 keep your head down #24",
+      "Neutral day \u2014 keep your head down #25",
+      "Neutral day \u2014 keep your head down #26",
+      "Neutral day \u2014 keep your head down #27",
+      "Neutral day \u2014 keep your head down #28",
+      "Neutral day \u2014 keep your head down #29",
+      "Neutral day \u2014 keep your head down #30",
+      "Neutral day \u2014 keep your head down #31",
+      "Neutral day \u2014 keep your head down #32",
+      "Neutral day \u2014 keep your head down #33",
+      "Neutral day \u2014 keep your head down #34",
+      "Neutral day \u2014 keep your head down #35",
+      "Neutral day \u2014 keep your head down #36",
+      "Neutral day \u2014 keep your head down #37",
+      "Neutral day \u2014 keep your head down #38",
+      "Neutral day \u2014 keep your head down #39",
+      "Neutral day \u2014 keep your head down #40",
+      "Neutral day \u2014 keep your head down #41",
+      "Neutral day \u2014 keep your head down #42",
+      "Neutral day \u2014 keep your head down #43",
+      "Neutral day \u2014 keep your head down #44",
+      "Neutral day \u2014 keep your head down #45",
+      "Neutral day \u2014 keep your head down #46",
+      "Neutral day \u2014 keep your head down #47",
+      "Neutral day \u2014 keep your head down #48",
+      "Neutral day \u2014 keep your head down #49",
+      "Neutral day \u2014 keep your head down #50"
+    ],
+    \u51F6: [
+      "Rough day \u2014 look busy #1",
+      "Rough day \u2014 look busy #2",
+      "Rough day \u2014 look busy #3",
+      "Rough day \u2014 look busy #4",
+      "Rough day \u2014 look busy #5",
+      "Rough day \u2014 look busy #6",
+      "Rough day \u2014 look busy #7",
+      "Rough day \u2014 look busy #8",
+      "Rough day \u2014 look busy #9",
+      "Rough day \u2014 look busy #10",
+      "Rough day \u2014 look busy #11",
+      "Rough day \u2014 look busy #12",
+      "Rough day \u2014 look busy #13",
+      "Rough day \u2014 look busy #14",
+      "Rough day \u2014 look busy #15",
+      "Rough day \u2014 look busy #16",
+      "Rough day \u2014 look busy #17",
+      "Rough day \u2014 look busy #18",
+      "Rough day \u2014 look busy #19",
+      "Rough day \u2014 look busy #20",
+      "Rough day \u2014 look busy #21",
+      "Rough day \u2014 look busy #22",
+      "Rough day \u2014 look busy #23",
+      "Rough day \u2014 look busy #24",
+      "Rough day \u2014 look busy #25",
+      "Rough day \u2014 look busy #26",
+      "Rough day \u2014 look busy #27",
+      "Rough day \u2014 look busy #28",
+      "Rough day \u2014 look busy #29",
+      "Rough day \u2014 look busy #30",
+      "Rough day \u2014 look busy #31",
+      "Rough day \u2014 look busy #32",
+      "Rough day \u2014 look busy #33",
+      "Rough day \u2014 look busy #34",
+      "Rough day \u2014 look busy #35",
+      "Rough day \u2014 look busy #36",
+      "Rough day \u2014 look busy #37",
+      "Rough day \u2014 look busy #38",
+      "Rough day \u2014 look busy #39",
+      "Rough day \u2014 look busy #40",
+      "Rough day \u2014 look busy #41",
+      "Rough day \u2014 look busy #42",
+      "Rough day \u2014 look busy #43",
+      "Rough day \u2014 look busy #44",
+      "Rough day \u2014 look busy #45",
+      "Rough day \u2014 look busy #46",
+      "Rough day \u2014 look busy #47",
+      "Rough day \u2014 look busy #48",
+      "Rough day \u2014 look busy #49",
+      "Rough day \u2014 look busy #50"
+    ]
   }
-  if (part.type === "text") {
-    return part;
-  }
-  if (part.type === "image_url") {
-    return part;
-  }
-  if (part.type === "file_url") {
-    return part;
-  }
-  throw new Error("Unsupported message content part");
 };
-var normalizeMessage = (message) => {
-  const { role, name, tool_call_id } = message;
-  if (role === "tool" || role === "function") {
-    const content = ensureArray(message.content).map((part) => typeof part === "string" ? part : JSON.stringify(part)).join("\n");
-    return {
-      role,
-      name,
-      tool_call_id,
-      content
-    };
+
+// shared/slogans.ts
+var DATA = slogans_default;
+function levelToTier(level) {
+  switch (level) {
+    case "\u5927\u5409":
+      return "\u5927\u5409";
+    case "\u4E2D\u5409":
+    case "\u5C0F\u5409":
+    case "\u5409":
+      return "\u5409";
+    case "\u672B\u5409":
+    case "\u5E73":
+      return "\u5E73";
+    case "\u51F6":
+    case "\u5C0F\u51F6":
+      return "\u51F6";
+    default:
+      return "\u5E73";
   }
-  const contentParts = ensureArray(message.content).map(normalizeContentPart);
-  if (contentParts.length === 1 && contentParts[0].type === "text") {
-    return {
-      role,
-      name,
-      content: contentParts[0].text
-    };
+}
+function sloganPool(level, lang = "zh") {
+  const tier = levelToTier(level);
+  const pack = lang === "en" ? DATA.en : DATA.zh;
+  return pack[tier] || pack["\u5E73"] || [];
+}
+function pickSlogan(level, lang = "zh", seed) {
+  const pool = sloganPool(level, lang);
+  if (!pool.length) return lang === "en" ? "Slack gently today." : "\u4ECA\u5929\u5148\u5598\u53E3\u6C14\u3002";
+  if (seed == null || !Number.isFinite(seed)) {
+    return pool[Math.floor(Math.random() * pool.length)];
   }
+  return pool[Math.abs(Math.floor(seed)) % pool.length];
+}
+function sloganStats() {
   return {
-    role,
-    name,
-    content: contentParts
+    zh: Object.fromEntries(
+      Object.keys(DATA.zh).map((k) => [k, DATA.zh[k].length])
+    ),
+    en: Object.fromEntries(
+      Object.keys(DATA.en).map((k) => [k, DATA.en[k].length])
+    ),
+    totalZh: Object.values(DATA.zh).reduce((s, a) => s + a.length, 0)
   };
-};
-var normalizeToolChoice = (toolChoice, tools) => {
-  if (!toolChoice) return void 0;
-  if (toolChoice === "none" || toolChoice === "auto") {
-    return toolChoice;
-  }
-  if (toolChoice === "required") {
-    if (!tools || tools.length === 0) {
-      throw new Error(
-        "tool_choice 'required' was provided but no tools were configured"
-      );
-    }
-    if (tools.length > 1) {
-      throw new Error(
-        "tool_choice 'required' needs a single tool or specify the tool name explicitly"
-      );
-    }
-    return {
-      type: "function",
-      function: { name: tools[0].function.name }
-    };
-  }
-  if ("name" in toolChoice) {
-    return {
-      type: "function",
-      function: { name: toolChoice.name }
-    };
-  }
-  return toolChoice;
-};
-var resolveApiUrl = () => ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0 ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions` : "https://forge.manus.im/v1/chat/completions";
-var assertApiKey = () => {
-  if (!ENV.forgeApiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
-  }
-};
-var normalizeResponseFormat = ({
-  responseFormat,
-  response_format,
-  outputSchema,
-  output_schema
-}) => {
-  const explicitFormat = responseFormat || response_format;
-  if (explicitFormat) {
-    if (explicitFormat.type === "json_schema" && !explicitFormat.json_schema?.schema) {
-      throw new Error(
-        "responseFormat json_schema requires a defined schema object"
-      );
-    }
-    return explicitFormat;
-  }
-  const schema = outputSchema || output_schema;
-  if (!schema) return void 0;
-  if (!schema.name || !schema.schema) {
-    throw new Error("outputSchema requires both name and schema");
-  }
-  return {
-    type: "json_schema",
-    json_schema: {
-      name: schema.name,
-      schema: schema.schema,
-      ...typeof schema.strict === "boolean" ? { strict: schema.strict } : {}
-    }
-  };
-};
-async function invokeLLM(params) {
-  assertApiKey();
-  const {
-    messages,
-    tools,
-    toolChoice,
-    tool_choice,
-    outputSchema,
-    output_schema,
-    responseFormat,
-    response_format
-  } = params;
-  const payload = {
-    model: "gemini-2.5-flash",
-    messages: messages.map(normalizeMessage)
-  };
-  if (tools && tools.length > 0) {
-    payload.tools = tools;
-  }
-  const normalizedToolChoice = normalizeToolChoice(
-    toolChoice || tool_choice,
-    tools
-  );
-  if (normalizedToolChoice) {
-    payload.tool_choice = normalizedToolChoice;
-  }
-  payload.max_tokens = 32768;
-  payload.thinking = {
-    "budget_tokens": 128
-  };
-  const normalizedResponseFormat = normalizeResponseFormat({
-    responseFormat,
-    response_format,
-    outputSchema,
-    output_schema
-  });
-  if (normalizedResponseFormat) {
-    payload.response_format = normalizedResponseFormat;
-  }
-  const response = await fetch(resolveApiUrl(), {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${ENV.forgeApiKey}`
-    },
-    body: JSON.stringify(payload)
-  });
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `LLM invoke failed: ${response.status} ${response.statusText} \u2013 ${errorText}`
-    );
-  }
-  return await response.json();
 }
 
 // server/routers/fortune.ts
-var FALLBACK_MESSAGES_ZH = {
-  \u5927\u5409: [
-    // 原有金句
-    "\u4ECA\u5929\u753B\u7684\u997C\u591F\u6211\u6491\u5230\u4E0B\u4E2A\u4E16\u7EAA\u4E86\uFF0C\u5148\u6478\u4E3A\u656C\u3002",
-    "\u8001\u677F\u4ECA\u5929\u4E0D\u5728\u7EBF\uFF0C\u6211\u7684\u6478\u9C7C\u65F6\u95F4\u65E0\u4E0A\u9650\uFF01",
-    "\u4ECA\u5929\u9002\u5408\u5E26\u85AA\u53D1\u5446\uFF0C\u987A\u4FBF\u601D\u8003\u4EBA\u751F\u3002",
-    "\u5DE5\u4F4D\u5C31\u662F\u6211\u7684\u517B\u8001\u9662\uFF0C\u4ECA\u5929\u7EE7\u7EED\u8EBA\u5E73\u3002",
-    "\u4ECA\u5929\u7684KPI\u5C31\u662F\u4E0D\u88AB\u53D1\u73B0\u5728\u6478\u9C7C\u3002",
-    "\u5927\u5409\u5927\u5229\uFF0C\u4ECA\u5929\u6478\u9C7C\uFF01\u8001\u677F\u770B\u4E0D\u89C1\u6211~",
-    "\u8FD0\u52BF\u7206\u68DA\uFF0C\u4ECA\u5929\u53EF\u4EE5\u5149\u660E\u6B63\u5927\u5730\u5E26\u85AA\u62C9\u5C4E\u3002",
-    "\u4ECA\u5929\u9002\u5408\u6574\u987F\u804C\u573A\uFF0C\u4ECE\u6478\u9C7C\u5F00\u59CB\u3002",
-    "\u6478\u9C7C\u4F53\u529B\u69FD\u5DF2\u6EE1\uFF0C\u4ECA\u5929\u53EF\u4EE5\u8086\u65E0\u5FCC\u60EE\uFF01",
-    "\u4ECA\u5929\u7684\u5DE5\u4F5C\u72B6\u6001\uFF1A\u5DF2\u8BFB\u4E0D\u56DE\uFF0C\u7CBE\u795E\u79BB\u804C\u3002",
-    // 反内卷系列
-    "\u5377\u4E0D\u52A8\u4E86\uFF1F\u90A3\u5C31\u8EBA\u5E73\u5427\uFF0C\u5730\u7403\u4E0D\u4F1A\u56E0\u4E3A\u4F60\u591A\u52A0\u73ED\u800C\u8F6C\u5F97\u66F4\u5FEB\u3002",
-    "\u5185\u5377\u7684\u5C3D\u5934\u662F\u6478\u9C7C\uFF0C\u4ECA\u5929\u6211\u5DF2\u7ECF\u5230\u8FBE\u7EC8\u70B9\u3002",
-    "\u522B\u4EBA\u5728\u5377\uFF0C\u6211\u5728\u6478\uFF0C\u8FD9\u5C31\u662F\u4EBA\u751F\u7684\u53C2\u5DEE\u3002",
-    "\u4ECA\u5929\u7684\u53CD\u5185\u5377\u5BA3\u8A00\uFF1A\u6211\u4E0D\u662F\u4E0D\u52AA\u529B\uFF0C\u6211\u662F\u5728\u4FDD\u62A4\u81EA\u5DF1\u3002",
-    "\u5185\u5377\u662F\u522B\u4EBA\u7684\u4E8B\uFF0C\u6478\u9C7C\u662F\u6211\u7684\u4FEE\u884C\u3002",
-    // 裁员焦虑系列
-    "\u4ECA\u5929\u8FD8\u6CA1\u88AB\u88C1\uFF0C\u8BF4\u660E\u4F60\u8FD8\u6709\u4EF7\u503C\uFF0C\u53BB\u6478\u4E2A\u9C7C\u5956\u52B1\u81EA\u5DF1\u3002",
-    "\u88C1\u5458\u540D\u5355\u4E0A\u6CA1\u6709\u6211\uFF0C\u4ECA\u5929\u53EF\u4EE5\u653E\u5FC3\u6478\u9C7C\u3002",
-    "\u4E0E\u5176\u7126\u8651\u88AB\u88C1\uFF0C\u4E0D\u5982\u4EAB\u53D7\u5F53\u4E0B\u7684\u6478\u9C7C\u65F6\u5149\u3002",
-    // 通缩幽默系列
-    "\u5DE5\u8D44\u4E0D\u6DA8\u7269\u4EF7\u4E0D\u6DA8\uFF0C\u552F\u4E00\u6DA8\u7684\u662F\u6211\u7684\u6478\u9C7C\u6280\u80FD\u3002",
-    "\u7ECF\u6D4E\u4E0B\u884C\uFF0C\u6478\u9C7C\u4E0A\u884C\uFF0C\u8FD9\u5C31\u662F\u5E73\u8861\u3002"
-  ],
-  \u4E2D\u5409: [
-    // 原有金句
-    "\u9700\u6C42\u53C8\u6539\u4E86\uFF1F\u6CA1\u4E8B\uFF0C\u6211\u7684\u5FC3\u5DF2\u7ECF\u548C\u4EE3\u7801\u4E00\u6837\uFF0C\u6B7B\u4E86\u3002",
-    "\u4ECA\u5929\u9002\u5408\u7528\u300C\u5728\u5BF9\u9F50\u300D\u6765\u56DE\u590D\u6240\u6709\u6D88\u606F\u3002",
-    "\u7075\u9B42\u5DF2\u7ECF\u4E0B\u73ED\uFF0C\u8089\u4F53\u8FD8\u5728\u5DE5\u4F4D\u3002",
-    "\u4ECA\u5929\u7684\u6548\u7387\uFF1A\u75281\u5C0F\u65F6\u5B8C\u621010\u5206\u949F\u7684\u5DE5\u4F5C\u3002",
-    "\u5EFA\u8BAE\u4ECA\u5929\u628A\u6240\u6709\u4F1A\u8BAE\u90FD\u6807\u8BB0\u4E3A\u300C\u53EF\u9009\u53C2\u52A0\u300D\u3002",
-    "\u4E2D\u5409\u8FD0\u52BF\uFF0C\u4ECA\u5929\u6478\u9C7C\u6709\u4FDD\u969C\uFF0C\u4F46\u8981\u4F4E\u8C03\u3002",
-    "\u4ECA\u5929\u9002\u5408\u6253\u5F00PPT\u5047\u88C5\u5728\u505A\u6C47\u62A5\u3002",
-    "\u8FD0\u52BF\u4E0D\u9519\uFF0C\u53EF\u4EE5\u9002\u5F53\u5EF6\u957F\u5E26\u85AA\u62C9\u5C4E\u65F6\u95F4\u3002",
-    "\u4ECA\u5929\u7684\u72B6\u6001\uFF1A\u4EBA\u5728\u5DE5\u4F4D\uFF0C\u5FC3\u5728\u5EA6\u5047\u3002",
-    "\u4E2D\u5409\u52A0\u6301\uFF0C\u4ECA\u5929\u53EF\u4EE5\u5408\u7406\u6478\u9C7C2\u5C0F\u65F6\u3002",
-    // 反内卷系列
-    "\u8001\u677F\u7684\u997C\u753B\u5F97\u518D\u5927\uFF0C\u4E5F\u4E0D\u5982\u4F60\u7684\u5348\u89C9\u9999\u3002",
-    "\u4ECA\u5929\u9002\u5408\u7528\u300C\u5728\u601D\u8003\u6218\u7565\u65B9\u5411\u300D\u6765\u63A9\u62A4\u6478\u9C7C\u3002",
-    "\u5185\u5377\u662F\u4E00\u79CD\u75C5\uFF0C\u6478\u9C7C\u662F\u4E00\u79CD\u836F\u3002",
-    "\u4ECA\u5929\u7684\u53CD\u5185\u5377\u7B56\u7565\uFF1A\u5047\u88C5\u5F88\u5FD9\uFF0C\u5B9E\u9645\u5F88\u95F2\u3002",
-    "\u522B\u4EBA996\uFF0C\u6211965\uFF0C\u8FD9\u5C31\u662F\u751F\u6D3B\u7684\u667A\u6167\u3002",
-    // 裁员焦虑系列
-    "\u88AB\u88C1\u4E86\u6709N+1\uFF0C\u4E0D\u88AB\u88C1\u6709\u6478\u9C7C\uFF0C\u600E\u4E48\u90FD\u4E0D\u4E8F\u3002",
-    "\u4ECA\u5929\u7684\u5B89\u5168\u611F\u6765\u81EA\uFF1A\u6211\u7684\u5DE5\u4F4D\u8FD8\u5728\u3002",
-    // 通缩幽默系列
-    "\u6D88\u8D39\u964D\u7EA7\uFF0C\u6478\u9C7C\u5347\u7EA7\uFF0C\u8FD9\u5C31\u662F\u6253\u5DE5\u4EBA\u7684\u81EA\u6211\u8C03\u8282\u3002",
-    "\u7ECF\u6D4E\u4E0D\u597D\uFF0C\u5FC3\u60C5\u8981\u597D\uFF0C\u6478\u9C7C\u4E0D\u80FD\u5C11\u3002",
-    "\u901A\u7F29\u65F6\u4EE3\uFF0C\u6478\u9C7C\u662F\u6700\u597D\u7684\u6295\u8D44\u3002"
-  ],
-  \u5C0F\u5409: [
-    // 原有金句
-    "\u5DE5\u4F5C\u91CF\u548C\u85AA\u6C34\u4E4B\u95F4\uFF0C\u603B\u6709\u4E00\u4E2A\u5728\u6478\u9C7C\u3002",
-    "\u4ECA\u5929\u9002\u5408\u6253\u5F00Excel\u5047\u88C5\u5728\u505A\u6570\u636E\u5206\u6790\u3002",
-    "\u5EFA\u8BAE\u4ECA\u5929\u7528\u300C\u7F51\u7EDC\u4E0D\u597D\u300D\u6765\u9003\u907F\u89C6\u9891\u4F1A\u8BAE\u3002",
-    "\u4ECA\u5929\u53EF\u4EE5\u540D\u6B63\u8A00\u987A\u5730\u8BF4\u5728\u7B49\u9700\u6C42\u3002",
-    "\u9002\u5408\u6234\u4E0A\u8033\u673A\u5047\u88C5\u5728\u5F00\u4F1A\u3002",
-    "\u5C0F\u5409\u8FD0\u52BF\uFF0C\u4ECA\u5929\u6478\u9C7C\u8981\u89C1\u673A\u884C\u4E8B\u3002",
-    "\u4ECA\u5929\u7684\u6478\u9C7C\u7B56\u7565\uFF1A\u5C0F\u6478\u6021\u60C5\uFF0C\u5927\u6478\u4F24\u8EAB\u3002",
-    "\u8FD0\u52BF\u5C0F\u5409\uFF0C\u5EFA\u8BAE\u628A\u6478\u9C7C\u65F6\u95F4\u63A7\u5236\u57281\u5C0F\u65F6\u5185\u3002",
-    "\u4ECA\u5929\u9002\u5408\u7528\u300C\u5728review\u4EE3\u7801\u300D\u6765\u4E89\u53D6\u6478\u9C7C\u65F6\u95F4\u3002",
-    "\u5C0F\u5409\u52A0\u6301\uFF0C\u4ECA\u5929\u53EF\u4EE5\u9002\u5EA6\u5E26\u85AA\u53D1\u5446\u3002",
-    // 反内卷系列
-    "\u4ECA\u5929\u9002\u5408\u7528\u300C\u5728\u62C9\u901A\u5BF9\u9F50\u300D\u6765\u62D6\u5EF6\u5DE5\u4F5C\u3002",
-    "\u5185\u5377\u4E0D\u662F\u6211\u7684\u9519\uFF0C\u662F\u8FD9\u4E2A\u65F6\u4EE3\u7684\u9519\u3002",
-    "\u4ECA\u5929\u7684\u53CD\u5185\u5377\u59FF\u52BF\uFF1A\u5750\u7740\u6478\u9C7C\uFF0C\u8EBA\u7740\u601D\u8003\u3002",
-    "\u5377\u738B\u4EEC\u5728\u51B2\u523A\uFF0C\u6211\u5728\u539F\u5730\u4F11\u606F\u3002",
-    // 裁员焦虑系列
-    "\u4ECA\u5929\u8FD8\u80FD\u6478\u9C7C\uFF0C\u8BF4\u660E\u516C\u53F8\u8FD8\u517B\u5F97\u8D77\u6211\u3002",
-    "\u88C1\u5458\u6F6E\u4E2D\u7684\u5E78\u5B58\u8005\uFF0C\u4ECA\u5929\u503C\u5F97\u6478\u4E00\u6478\u3002",
-    // 通缩幽默系列
-    "\u5DE5\u8D44\u6CA1\u6DA8\uFF0C\u4F46\u6478\u9C7C\u6280\u80FD\u6DA8\u4E86\uFF0C\u8FD9\u4E5F\u662F\u4E00\u79CD\u589E\u503C\u3002",
-    "\u7ECF\u6D4E\u5BD2\u51AC\uFF0C\u6478\u9C7C\u53D6\u6696\u3002",
-    "\u7269\u4EF7\u4E0D\u6DA8\uFF0C\u6478\u9C7C\u4E0D\u6B62\u3002",
-    "\u901A\u7F29\u65F6\u4EE3\u7684\u751F\u5B58\u6CD5\u5219\uFF1A\u5C11\u82B1\u94B1\uFF0C\u591A\u6478\u9C7C\u3002"
-  ],
-  \u672B\u5409: [
-    // 原有金句
-    "\u4ECA\u5929\u7684\u5DE5\u4F5C\u72B6\u6001\uFF1A\u4EBA\u5728\u5DE5\u4F4D\u5FC3\u5728\u5BB6\u3002",
-    "\u9002\u5408\u7528\u300C\u6536\u5230\uFF0C\u7A0D\u540E\u5904\u7406\u300D\u62D6\u5230\u4E0B\u73ED\u3002",
-    "\u4ECA\u5929\u9002\u5408\u7814\u7A76\u516C\u53F8\u96F6\u98DF\u67DC\u7684\u5E93\u5B58\u3002",
-    "\u5EFA\u8BAE\u4ECA\u5929\u5F00\u4F1A\u65F6\u6253\u5F00\u6444\u50CF\u5934\u4F46\u5173\u95ED\u5927\u8111\u3002",
-    "\u4ECA\u5929\u53EF\u4EE5\u591A\u559D\u51E0\u676F\u6C34\uFF0C\u987A\u4FBF\u591A\u4E0A\u51E0\u6B21\u5395\u6240\u3002",
-    "\u672B\u5409\u8FD0\u52BF\uFF0C\u4ECA\u5929\u6478\u9C7C\u8981\u683C\u5916\u5C0F\u5FC3\u3002",
-    "\u4ECA\u5929\u7684\u6478\u9C7C\u7B56\u7565\uFF1A\u6253\u6E38\u51FB\u6218\uFF0C\u901F\u6218\u901F\u51B3\u3002",
-    "\u8FD0\u52BF\u672B\u5409\uFF0C\u5EFA\u8BAE\u628A\u6478\u9C7C\u65F6\u95F4\u63A7\u5236\u572830\u5206\u949F\u5185\u3002",
-    "\u4ECA\u5929\u9002\u5408\u5047\u88C5\u5728\u6574\u7406\u684C\u9762\u6587\u4EF6\u3002",
-    "\u672B\u5409\u52A0\u6301\uFF0C\u4ECA\u5929\u6478\u9C7C\u8981\u773C\u89C2\u516D\u8DEF\u8033\u542C\u516B\u65B9\u3002",
-    // 反内卷系列
-    "\u4ECA\u5929\u4E0D\u9002\u5408\u53CD\u5185\u5377\uFF0C\u5148\u82DF\u7740\u3002",
-    "\u5185\u5377\u5927\u519B\u538B\u5883\uFF0C\u4ECA\u5929\u4F4E\u8C03\u884C\u4E8B\u3002",
-    "\u4ECA\u5929\u7684\u7B56\u7565\uFF1A\u8868\u9762\u5185\u5377\uFF0C\u5185\u5FC3\u8EBA\u5E73\u3002",
-    // 裁员焦虑系列
-    "\u4ECA\u5929\u9002\u5408\u8868\u73B0\u5F97\u79EF\u6781\u4E00\u70B9\uFF0C\u6BD5\u7ADF\u88C1\u5458\u5B63\u8FD8\u6CA1\u8FC7\u3002",
-    "\u672B\u5409\u8FD0\u52BF\uFF0C\u4ECA\u5929\u6700\u597D\u8BA9\u8001\u677F\u770B\u5230\u4F60\u5728\u5DE5\u4F5C\u3002",
-    "\u88C1\u5458\u9634\u5F71\u4E0B\uFF0C\u4ECA\u5929\u6478\u9C7C\u8981\u8C28\u614E\u3002",
-    // 通缩幽默系列
-    "\u7ECF\u6D4E\u4E0D\u597D\uFF0C\u5DE5\u4F5C\u8981\u4FDD\uFF0C\u4ECA\u5929\u5C11\u6478\u4E00\u70B9\u3002",
-    "\u901A\u7F29\u65F6\u4EE3\uFF0C\u996D\u7897\u8981\u7A33\uFF0C\u6478\u9C7C\u8981\u8F7B\u3002",
-    "\u4ECA\u5929\u7684\u751F\u5B58\u6CD5\u5219\uFF1A\u5047\u88C5\u5F88\u5FD9\uFF0C\u5B9E\u9645\u5F88\u614C\u3002",
-    "\u672B\u5409\u63D0\u9192\uFF1A\u6478\u9C7C\u6709\u98CE\u9669\uFF0C\u5165\u5751\u9700\u8C28\u614E\u3002"
-  ],
-  \u51F6: [
-    // 原有金句
-    "\u4ECA\u5929\u8001\u677F\u773C\u795E\u4E0D\u592A\u5BF9\uFF0C\u5EFA\u8BAE\u4F4E\u8C03\u884C\u4E8B\u3002",
-    "\u6478\u9C7C\u9700\u8C28\u614E\uFF0C\u4ECA\u5929\u9002\u5408\u5047\u88C5\u5F88\u5FD9\u3002",
-    "\u4ECA\u5929\u7684\u8FD0\u52BF\u63D0\u9192\u4F60\uFF1A\u6253\u5F00\u5DE5\u4F5C\u6587\u6863\uFF0C\u5047\u88C5\u5728\u601D\u8003\u3002",
-    "\u5EFA\u8BAE\u4ECA\u5929\u628A\u6478\u9C7C\u65F6\u95F4\u63A7\u5236\u5728\u5395\u6240\u91CC\u3002",
-    "\u4ECA\u5929\u9002\u5408\u5047\u88C5\u5728\u7B49\u9700\u6C42\uFF0C\u5B9E\u9645\u5728\u7B49\u4E0B\u73ED\u3002",
-    "\u51F6\uFF01\u4ECA\u5929\u4E0D\u5B9C\u6478\u9C7C\uFF0C\u5EFA\u8BAE\u8BA4\u771F\u5DE5\u4F5C\u4E00\u5929\u3002",
-    "\u8FD0\u52BF\u4E0D\u4F73\uFF0C\u4ECA\u5929\u6478\u9C7C\u5BB9\u6613\u88AB\u6293\u5305\u3002",
-    "\u4ECA\u5929\u7684\u6478\u9C7C\u7B56\u7565\uFF1A\u80FD\u4E0D\u6478\u5C31\u4E0D\u6478\u3002",
-    "\u51F6\u8FD0\u5F53\u5934\uFF0C\u5EFA\u8BAE\u4ECA\u5929\u628A\u5DE5\u4F5C\u5F53\u4E3B\u4E1A\u3002",
-    "\u4ECA\u5929\u9002\u5408\u628A\u6478\u9C7C\u7684\u5FC3\u601D\u7528\u5728\u5DE5\u4F5C\u4E0A\u3002",
-    // 反内卷系列
-    "\u4ECA\u5929\u4E0D\u662F\u53CD\u5185\u5377\u7684\u65E5\u5B50\uFF0C\u5148\u5377\u4E00\u5377\u4FDD\u5E73\u5B89\u3002",
-    "\u5185\u5377\u4E00\u5929\u4E0D\u4F1A\u6B7B\uFF0C\u4F46\u4ECA\u5929\u4E0D\u5377\u53EF\u80FD\u4F1A\u88AB\u76EF\u4E0A\u3002",
-    "\u4ECA\u5929\u7684\u53CD\u5185\u5377\u7B56\u7565\uFF1A\u6682\u505C\uFF0C\u660E\u5929\u518D\u8BF4\u3002",
-    // 裁员焦虑系列
-    "\u51F6\u8FD0\u5F53\u5934\uFF0C\u4ECA\u5929\u6700\u597D\u8868\u73B0\u5F97\u50CF\u4E2A\u5377\u738B\u3002",
-    "\u88C1\u5458\u540D\u5355\u53EF\u80FD\u6B63\u5728\u62DF\u5B9A\uFF0C\u4ECA\u5929\u522B\u6478\u4E86\u3002",
-    "\u4ECA\u5929\u9002\u5408\u4E3B\u52A8\u6C47\u62A5\u5DE5\u4F5C\u8FDB\u5EA6\uFF0C\u5237\u5237\u5B58\u5728\u611F\u3002",
-    // 通缩幽默系列
-    "\u7ECF\u6D4E\u5BD2\u51AC+\u51F6\u8FD0\uFF0C\u4ECA\u5929\u8001\u8001\u5B9E\u5B9E\u5E72\u6D3B\u5427\u3002",
-    "\u901A\u7F29\u65F6\u4EE3\u4FDD\u4F4F\u996D\u7897\u6700\u91CD\u8981\uFF0C\u4ECA\u5929\u522B\u4F5C\u6B7B\u3002",
-    "\u4ECA\u5929\u7684\u751F\u5B58\u6CD5\u5219\uFF1A\u4F4E\u8C03\u505A\u4EBA\uFF0C\u9AD8\u8C03\u505A\u4E8B\u3002",
-    "\u51F6\u8FD0\u63D0\u9192\uFF1A\u5DE5\u4F5C\u4E0D\u52AA\u529B\uFF0C\u660E\u5929\u627E\u5DE5\u4F5C\u3002"
-  ]
-};
-var FALLBACK_MESSAGES_EN = {
-  \u5927\u5409: [
-    "Boss is MIA today, time to slack like a pro!",
-    "Your slacking energy is off the charts today!",
-    "Perfect day for a paid daydreaming session.",
-    "Today's productivity: Looking busy while doing nothing.",
-    "Your desk is now officially a relaxation station.",
-    "Great luck! Time to master the art of looking busy.",
-    "Today's KPI: Successfully avoid all actual work.",
-    "Your slacking powers are at maximum capacity!",
-    "Perfect day to let your soul clock out early.",
-    "Today you can slack with zero consequences!",
-    // Anti-hustle culture series
-    "Hustle culture is dead, long live slack culture!",
-    "They're grinding, I'm chilling. This is the way.",
-    "Today's anti-hustle mantra: Work smarter, slack harder.",
-    "The grind can wait, your mental health can't.",
-    "Quiet quitting? I call it loud thriving.",
-    // Layoff anxiety series
-    "Still employed? Celebrate with some quality slacking!",
-    "Not on the layoff list today = permission to slack.",
-    // Economic humor series
-    "Economy's down, slacking's up. Balance achieved.",
-    "In this economy, slacking is self-care.",
-    "Inflation can't touch my slacking skills."
-  ],
-  \u4E2D\u5409: [
-    "Good luck today! Slack moderately and prosper.",
-    "Your slacking window is open, use it wisely.",
-    "Today's vibe: Body at desk, mind on vacation.",
-    "Good fortune for strategic bathroom breaks.",
-    "Time to perfect your 'deep in thought' face.",
-    "Today you can slack with reasonable confidence.",
-    "Your luck supports 2 hours of quality slacking.",
-    "Good day to master the 'network issues' excuse.",
-    "Today's efficiency: Maximum slack, minimum detection.",
-    "Your slacking energy is well-balanced today.",
-    // Anti-hustle culture series
-    "Boss's promises are big, but your nap is bigger.",
-    "Today's strategy: Look busy, stay chill.",
-    "Hustle culture is a disease, slacking is the cure.",
-    "Others are burning out, you're chilling out.",
-    // Layoff anxiety series
-    "Survived another round of layoffs? Time to slack!",
-    "Your job security today = your slacking permit.",
-    // Economic humor series
-    "Recession-proof skill: Professional slacking.",
-    "Economy's rough, but your slacking game is smooth.",
-    "In tough times, slack is the best investment.",
-    "Salary frozen, slacking skills on fire."
-  ],
-  \u5C0F\u5409: [
-    "Fair luck today, slack with caution.",
-    "Your slacking window is small but usable.",
-    "Today's strategy: Quick slacks, fast recovery.",
-    "Time to perfect the 'waiting for feedback' excuse.",
-    "Fair fortune for brief mental vacations.",
-    "Today you can slack, but stay alert.",
-    "Your luck supports 1 hour of careful slacking.",
-    "Good day to master the 'reviewing code' cover.",
-    "Today's vibe: Slack when opportunity knocks.",
-    "Your slacking energy needs strategic deployment.",
-    // Anti-hustle culture series
-    "Today's anti-hustle move: Strategic procrastination.",
-    "The grind is real, but so is your need for rest.",
-    "Hustle bros are sprinting, you're pacing yourself.",
-    // Layoff anxiety series
-    "Still here? That's worth a small celebration slack.",
-    "Job market's tough, but you're tougher. Small slack earned.",
-    // Economic humor series
-    "Salary didn't grow, but slacking skills did.",
-    "Economic winter calls for slacking warmth.",
-    "Prices stable, slacking stable. Life is good.",
-    "Downgrade spending, upgrade slacking.",
-    "In deflation, slacking is the real currency."
-  ],
-  \u672B\u5409: [
-    "Luck is thin today, slack at your own risk.",
-    "Your slacking window is barely cracked open.",
-    "Today's strategy: Quick glances, fast alt-tabs.",
-    "Time to perfect the 'compiling code' excuse.",
-    "Minimal fortune for very brief breaks.",
-    "Today you should probably look busy.",
-    "Your luck supports only 30 mins of slacking.",
-    "Good day to actually pretend to work.",
-    "Today's vibe: Stay vigilant, slack minimally.",
-    "Your slacking energy is running low.",
-    // Anti-hustle culture series
-    "Today's not the day to fight hustle culture.",
-    "Anti-hustle on pause, survival mode on.",
-    "Look busy on the outside, chill on the inside.",
-    // Layoff anxiety series
-    "Layoff season vibes, better look productive today.",
-    "Show some hustle today, slack tomorrow.",
-    "Today's survival tip: Be visible, look valuable.",
-    // Economic humor series
-    "Tough times call for careful slacking.",
-    "Economy's shaky, job's precious. Slack lightly.",
-    "Today's motto: Fake busy, stay employed.",
-    "Minor luck says: Work now, slack later."
-  ],
-  \u51F6: [
-    "Bad luck! Today is not for slacking.",
-    "Your slacking radar is completely offline.",
-    "Today's strategy: Actually do some work.",
-    "Time to look genuinely productive.",
-    "No fortune for slacking today, sorry!",
-    "Today you should definitely work hard.",
-    "Your luck says: Zero slacking allowed.",
-    "Bad day to test your boss's patience.",
-    "Today's vibe: Head down, work mode on.",
-    "Your slacking energy has been depleted.",
-    // Anti-hustle culture series
-    "Today's not anti-hustle day. Just hustle.",
-    "One day of hustle won't kill you. Probably.",
-    "Anti-hustle movement on hold. Resume tomorrow.",
-    // Layoff anxiety series
-    "Bad luck + layoff season = work hard today.",
-    "Today's survival mode: Look like a top performer.",
-    "The layoff list might be updating. Look busy!",
-    // Economic humor series
-    "Economic winter + bad luck = actually work.",
-    "In this economy, keep your job. Work today.",
-    "Today's rule: Low profile, high output.",
-    "Bad fortune reminder: No job, no slack."
-  ]
-};
-function extractSlogan(content, isEnglish) {
-  if (content.length < 100) {
-    return content.trim();
-  }
-  try {
-    const jsonMatch = content.match(/\{[\s\S]*"slogan"\s*:\s*"([^"]+)"[\s\S]*\}/);
-    if (jsonMatch && jsonMatch[1]) {
-      return jsonMatch[1].trim();
-    }
-  } catch {
-  }
-  const finalChoiceMatch = content.match(/\*+Final Choice:?\*+\s*(.+?)(?:\s*\(|$)/i);
-  if (finalChoiceMatch && finalChoiceMatch[1]) {
-    return finalChoiceMatch[1].trim();
-  }
-  if (isEnglish) {
-    const lines = content.split("\n").filter((line) => line.trim());
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i].trim();
-      if (line.length >= 20 && line.length <= 80 && /[a-zA-Z]/.test(line)) {
-        return line.replace(/^\*+|\*+$/g, "").replace(/^["']|["']$/g, "").trim();
-      }
-    }
-  } else {
-    const lines = content.split("\n").filter((line) => line.trim());
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i].trim();
-      const chineseMatch = line.match(/[\u4e00-\u9fa5，。！？、]+/g);
-      if (chineseMatch) {
-        const chineseText = chineseMatch.join("");
-        if (chineseText.length >= 15 && chineseText.length <= 60) {
-          return line.replace(/^\*+|\*+$/g, "").replace(/^[「」【】]/g, "").trim();
-        }
-      }
-    }
-  }
-  return content.slice(0, 50).trim();
-}
 var fortuneRouter = router({
-  // 生成00后职场黑话风格文案
+  libraryStats: publicProcedure.query(() => sloganStats()),
   generateSlogan: publicProcedure.input(
     z3.object({
       level: z3.string(),
-      // 运势等级：大吉、中吉、小吉、末吉、凶
       percent: z3.number(),
-      // 摸鱼指数百分比
       language: z3.enum(["zh", "en"]).optional().default("zh")
-      // 语言
     })
   ).mutation(async ({ input }) => {
-    const { level, percent, language } = input;
-    const isEnglish = language === "en";
-    const FALLBACK_MESSAGES = isEnglish ? FALLBACK_MESSAGES_EN : FALLBACK_MESSAGES_ZH;
-    try {
-      const systemPrompt = isEnglish ? `You are a witty office slacking fortune generator. Output ONLY one short, funny slogan (20-60 characters) about slacking at work.
-
-Style: Use Gen-Z office humor, memes, corporate buzzwords mockery. Be sarcastic and relatable.
-Themes to include: Anti-hustle culture, quiet quitting, layoff anxiety humor, economic downturn jokes, work-life balance rebellion.
-
-Fortune mood:
-- Great Luck (\u5927\u5409): Super happy, slack freely, no consequences
-- Good Luck (\u4E2D\u5409): Nice, can slack moderately with confidence  
-- Fair Luck (\u5C0F\u5409): Okay, slack carefully, stay alert
-- Minor Luck (\u672B\u5409): Meh, be very careful, minimal slacking
-- Bad Luck (\u51F6): Don't slack, actually work today` : `\u4F60\u662F\u6478\u9C7C\u91D1\u53E5\u751F\u6210\u5668\u3002\u53EA\u8F93\u51FA\u4E00\u53E520-40\u5B57\u768400\u540E\u804C\u573A\u9ED1\u8BDD\u98CE\u683C\u91D1\u53E5\uFF0C\u4E0D\u8981\u4EFB\u4F55\u89E3\u91CA\u3002
-
-\u98CE\u683C\u8981\u6C42\uFF1A\u4F7F\u7528\u6446\u70C2\u3001\u8EBA\u5E73\u3001\u753B\u997C\u3001\u5E26\u85AA\u62C9\u5C4E\u3001\u7CBE\u795E\u79BB\u804C\u3001\u5DE5\u4F4D\u517B\u8001\u3001\u6574\u987F\u804C\u573A\u3001\u5BF9\u9F50\u9897\u7C92\u5EA6\u3001\u62C9\u901A\u5BF9\u9F50\u3001\u8D4B\u80FD\u3001\u6293\u624B\u7B49\u804C\u573A\u6897\u3002
-\u4E3B\u9898\u65B9\u5411\uFF1A\u53CD\u5185\u5377\u3001\u88C1\u5458\u7126\u8651\u8C03\u4F83\u3001\u901A\u7F29\u5E7D\u9ED8\u3001\u6253\u5DE5\u4EBA\u81EA\u5632\u3001\u804C\u573A\u751F\u5B58\u667A\u6167\u3002
-
-\u8FD0\u52BF\u60C5\u7EEA\uFF1A
-- \u5927\u5409\uFF1A\u8D85\u5F00\u5FC3\uFF0C\u653E\u5FC3\u6478\uFF0C\u53EF\u4EE5\u8086\u65E0\u5FCC\u60EE
-- \u4E2D\u5409\uFF1A\u4E0D\u9519\uFF0C\u6709\u4FDD\u969C\uFF0C\u53EF\u4EE5\u9002\u5EA6\u6478\u9C7C
-- \u5C0F\u5409\uFF1A\u8FD8\u884C\uFF0C\u9002\u5EA6\u6478\uFF0C\u8981\u89C1\u673A\u884C\u4E8B
-- \u672B\u5409\uFF1A\u4E00\u822C\uFF0C\u5C0F\u5FC3\u70B9\uFF0C\u8981\u683C\u5916\u8C28\u614E
-- \u51F6\uFF1A\u4E0D\u884C\uFF0C\u8981\u4F4E\u8C03\uFF0C\u6700\u597D\u522B\u6478`;
-      const levelMap = {
-        "\u5927\u5409": "Great Luck",
-        "\u4E2D\u5409": "Good Luck",
-        "\u5C0F\u5409": "Fair Luck",
-        "\u672B\u5409": "Minor Luck",
-        "\u51F6": "Bad Luck"
-      };
-      const userPrompt = isEnglish ? `Fortune: ${levelMap[level] || level}, Index: ${percent}%. Output slogan:` : `\u8FD0\u52BF\uFF1A${level}\uFF0C\u6307\u6570${percent}%\u3002\u8F93\u51FA\u91D1\u53E5\uFF1A`;
-      const result = await invokeLLM({
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ]
-      });
-      const content = result.choices[0]?.message?.content;
-      if (typeof content === "string" && content.trim().length > 0) {
-        const slogan = extractSlogan(content, isEnglish);
-        if (slogan.length < 10 || slogan.length > 80) {
-          const fallbacks2 = FALLBACK_MESSAGES[level] || FALLBACK_MESSAGES["\u5C0F\u5409"];
-          const randomSlogan2 = fallbacks2[Math.floor(Math.random() * fallbacks2.length)];
-          return {
-            success: true,
-            slogan: randomSlogan2,
-            source: "fallback"
-          };
-        }
-        return {
-          success: true,
-          slogan,
-          source: "ai"
-        };
-      }
-      const fallbacks = FALLBACK_MESSAGES[level] || FALLBACK_MESSAGES["\u5C0F\u5409"];
-      const randomSlogan = fallbacks[Math.floor(Math.random() * fallbacks.length)];
-      return {
-        success: true,
-        slogan: randomSlogan,
-        source: "fallback"
-      };
-    } catch (error) {
-      console.error("LLM\u8C03\u7528\u5931\u8D25:", error);
-      const fallbacks = FALLBACK_MESSAGES[level] || FALLBACK_MESSAGES["\u5C0F\u5409"];
-      const randomSlogan = fallbacks[Math.floor(Math.random() * fallbacks.length)];
-      return {
-        success: true,
-        slogan: randomSlogan,
-        source: "fallback"
-      };
-    }
+    const lang = input.language === "en" ? "en" : "zh";
+    const seed = Math.floor(input.percent * 17 + input.level.length * 31);
+    const slogan = pickSlogan(input.level, lang, seed);
+    return {
+      success: true,
+      slogan,
+      source: "library"
+    };
   })
 });
 
