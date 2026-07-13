@@ -1,5 +1,12 @@
 # moyu-fortune-deploy
 
+- `main` → Render Free **moyu-light** API (`dist/light.js`) · https://moyu-fortune.onrender.com
+- `gh-pages` → static frontend · https://chillworks.ai (VITE_MOYU_API_BASE → onrender)
+
+Source: `~/moyu-fortune` private. Path B = light REST (no MySQL/Stripe/OAuth).
+
+# moyu-fortune-deploy
+
 | Branch | Role |
 |--------|------|
 | `gh-pages` | Production frontend https://chillworks.ai |
