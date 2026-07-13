@@ -1,10 +1,10 @@
 // Service Worker for MoYu Fortune PWA
 // v4 - CDN图片缓存 + 缓存大小限制 + 过期策略 + 预缓存铜钱图片
 
-const CACHE_NAME = 'moyu-fortune-v4';
-const STATIC_CACHE = 'moyu-fortune-static-v4';
-const DYNAMIC_CACHE = 'moyu-fortune-dynamic-v4';
-const CDN_CACHE = 'moyu-fortune-cdn-v4';
+const CACHE_NAME = 'moyu-fortune-v5';
+const STATIC_CACHE = 'moyu-fortune-static-v5';
+const DYNAMIC_CACHE = 'moyu-fortune-dynamic-v5';
+const CDN_CACHE = 'moyu-fortune-cdn-v5';
 
 // CDN缓存限制
 const CDN_CACHE_MAX_ITEMS = 100;
@@ -21,12 +21,11 @@ const STATIC_ASSETS = [
 
 // 关键 CDN 资源 - 预缓存（铜钱正面图片，首屏关键资源）
 const CRITICAL_CDN_ASSETS = [
-  'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/yDgdvSFbrknFvFrI.webp',
+  '/assets/moyu/yDgdvSFbrknFvFrI.webp',
 ];
 
 // CDN域名列表 - 需要缓存的外部资源
 const CDN_HOSTS = [
-  'files.manuscdn.com',
   'fonts.googleapis.com',
   'fonts.gstatic.com',
 ];
