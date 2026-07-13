@@ -1,23 +1,23 @@
 # moyu-fortune-deploy
 
-Public mirror for **https://chillworks.ai** (GH Pages) + Render Free backup.
-
 | Branch | Role |
 |--------|------|
-| `gh-pages` | Production (`CNAME=chillworks.ai`) — keep CNAME |
-| `main` | Render `moyu-fortune` static host |
+| `gh-pages` | Production frontend https://chillworks.ai |
+| `main` | Render Free **light API** https://moyu-fortune.onrender.com |
 
-## Rebuild / push
-
-```bash
-bash ~/quantradar/scripts/rebuild_static.sh moyu
-```
-
-Source: `~/moyu-fortune` (private). Path A = static frontend only (SX2).
-
-## Verify
+## Frontend rebuild
 
 ```bash
-curl -sS https://chillworks.ai/ | head
-python3 ~/quantradar/scripts/sites_extreme_verify.py
+cd ~/moyu-fortune
+VITE_STATIC_MODE=true VITE_MOYU_API_BASE=https://moyu-fortune.onrender.com pnpm exec vite build
+bash ~/quantradar/scripts/rebuild_static.sh moyu   # or sync gh-pages manually
 ```
+
+## API
+
+- `GET /health`
+- `POST /api/light/draw`
+- `GET /api/light/history?deviceId=`
+- `GET /api/light/leaderboard`
+
+See `moyu-fortune/docs/MOYU_BACKEND_B.md`.

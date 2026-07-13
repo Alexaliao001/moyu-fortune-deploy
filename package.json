@@ -1,10 +1,10 @@
 {
-  "name": "static-host",
+  "name": "moyu-light-host",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "echo prebuilt",
-    "start": "NODE_ENV=production node dist/index.js"
+    "start": "NODE_ENV=production node dist/light.js"
   },
   "engines": { "node": ">=20" }
 }
