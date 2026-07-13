@@ -1643,7 +1643,6 @@ var VIP_AVATARS = [
   { emoji: "\u{1F52E}", name: "\u6C34\u6676\u7403", requiredLevel: "annual" }
 ];
 var FREE_AVATARS = ["\u{1F431}", "\u{1F436}", "\u{1F43C}", "\u{1F98A}", "\u{1F428}", "\u{1F42F}", "\u{1F438}", "\u{1F435}"];
-var DAILY_DRAW_LIMIT = 3;
 var INVITE_REWARD_DAYS = 3;
 function generateInviteCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -1654,35 +1653,11 @@ function generateInviteCode() {
   return code;
 }
 var memberRouter = router({
-  // 检查是否可以抽签
-  checkDrawLimit: protectedProcedure.query(async ({ ctx }) => {
-    const db = await getDb();
-    if (!db) {
-      return { canDraw: true, remaining: DAILY_DRAW_LIMIT, isVip: false };
-    }
-    const userSubscription = await db.select().from(subscriptions).where(and(
-      eq5(subscriptions.userId, ctx.user.id),
-      eq5(subscriptions.status, "active")
-    )).limit(1);
-    const isVip = userSubscription.length > 0;
-    if (isVip) {
-      return { canDraw: true, remaining: -1, isVip: true };
-    }
-    const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-    const todayCount = await db.select().from(dailyDrawCount).where(and(
-      eq5(dailyDrawCount.userId, ctx.user.id),
-      eq5(dailyDrawCount.drawDate, today)
-    )).limit(1);
-    const currentCount = todayCount.length > 0 ? todayCount[0].count : 0;
-    const remaining = DAILY_DRAW_LIMIT - currentCount;
-    return {
-      canDraw: remaining > 0,
-      remaining,
-      isVip: false,
-      limit: DAILY_DRAW_LIMIT
-    };
+  // 检查是否可以抽签 — 铁律 3：每日确定性，无限查看，无次数墙
+  checkDrawLimit: protectedProcedure.query(async () => {
+    return { canDraw: true, remaining: -1, isVip: false, limit: null };
   }),
-  // 记录抽签（增加次数）
+  // 记录抽签 — 幂等：同用户同日仅保留一条（upsert）
   recordDraw: protectedProcedure.input(z5.object({
     level: z5.string(),
     emoji: z5.string(),
@@ -1695,44 +1670,36 @@ var memberRouter = router({
     if (!db) {
       return { success: true };
     }
-    const userSubscription = await db.select().from(subscriptions).where(and(
-      eq5(subscriptions.userId, ctx.user.id),
-      eq5(subscriptions.status, "active")
-    )).limit(1);
-    const isVip = userSubscription.length > 0;
-    if (!isVip) {
-      const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-      const todayCount = await db.select().from(dailyDrawCount).where(
-        and(
-          eq5(dailyDrawCount.userId, ctx.user.id),
-          eq5(dailyDrawCount.drawDate, today)
-        )
-      ).limit(1);
-      if (todayCount.length > 0) {
-        if (todayCount[0].count >= DAILY_DRAW_LIMIT) {
-          throw new TRPCError5({
-            code: "FORBIDDEN",
-            message: "\u4ECA\u65E5\u62BD\u7B7E\u6B21\u6570\u5DF2\u7528\u5B8C\uFF0C\u5347\u7EA7\u4F1A\u5458\u4EAB\u53D7\u65E0\u9650\u62BD\u7B7E"
-          });
-        }
-        await db.update(dailyDrawCount).set({ count: todayCount[0].count + 1 }).where(eq5(dailyDrawCount.id, todayCount[0].id));
-      } else {
-        await db.insert(dailyDrawCount).values({
-          userId: ctx.user.id,
-          drawDate: today,
-          count: 1
-        });
-      }
+    const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+    const existing = await db.execute(sql`
+        SELECT id FROM fortune_history
+        WHERE "userId" = ${ctx.user.id}
+          AND ("createdAt")::date = ${today}::date
+        ORDER BY "createdAt" DESC
+        LIMIT 1
+      `);
+    const rows = Array.isArray(existing) ? existing : existing?.rows || [];
+    const existingId = rows[0] ? Number(rows[0].id) : null;
+    if (existingId) {
+      await db.update(fortuneHistory).set({
+        level: input.level,
+        emoji: input.emoji,
+        percent: input.percent,
+        message: input.message || null,
+        suggestedTime: input.suggestedTime || null,
+        avatar: input.avatar || null
+      }).where(eq5(fortuneHistory.id, existingId));
+    } else {
+      await db.insert(fortuneHistory).values({
+        userId: ctx.user.id,
+        level: input.level,
+        emoji: input.emoji,
+        percent: input.percent,
+        message: input.message || null,
+        suggestedTime: input.suggestedTime || null,
+        avatar: input.avatar || null
+      });
     }
-    await db.insert(fortuneHistory).values({
-      userId: ctx.user.id,
-      level: input.level,
-      emoji: input.emoji,
-      percent: input.percent,
-      message: input.message || null,
-      suggestedTime: input.suggestedTime || null,
-      avatar: input.avatar || null
-    });
     return { success: true };
   }),
   // 获取抽签历史
