@@ -1798,16 +1798,16 @@ var memberRouter = router({
     if (user[0]?.inviteCode) {
       return { inviteCode: user[0].inviteCode };
     }
-    let inviteCode2 = generateInviteCode();
+    let inviteCode3 = generateInviteCode();
     let attempts = 0;
     while (attempts < 10) {
-      const existing = await db.select().from(users).where(eq5(users.inviteCode, inviteCode2)).limit(1);
+      const existing = await db.select().from(users).where(eq5(users.inviteCode, inviteCode3)).limit(1);
       if (existing.length === 0) break;
-      inviteCode2 = generateInviteCode();
+      inviteCode3 = generateInviteCode();
       attempts++;
     }
-    await db.update(users).set({ inviteCode: inviteCode2 }).where(eq5(users.id, ctx.user.id));
-    return { inviteCode: inviteCode2 };
+    await db.update(users).set({ inviteCode: inviteCode3 }).where(eq5(users.id, ctx.user.id));
+    return { inviteCode: inviteCode3 };
   }),
   // 使用邀请码注册
   applyInviteCode: protectedProcedure.input(z5.object({ inviteCode: z5.string() })).mutation(async ({ ctx, input }) => {
@@ -2521,7 +2521,7 @@ function httpUrlFromLibsql(url) {
   }
   return url.replace(/\/$/, "");
 }
-async function tursoExec(sql5, args = []) {
+async function tursoExec(sql6, args = []) {
   const base = httpUrlFromLibsql(LIBSQL_URL);
   const res = await fetch(`${base}/v2/pipeline`, {
     method: "POST",
@@ -2534,7 +2534,7 @@ async function tursoExec(sql5, args = []) {
         {
           type: "execute",
           stmt: {
-            sql: sql5,
+            sql: sql6,
             args: args.map((a) => ({
               type: typeof a === "number" ? "integer" : "text",
               value: String(a)
@@ -2898,6 +2898,366 @@ function updateProfile(input) {
   return getProfile(deviceId);
 }
 
+// server/light/pgAlias.ts
+import { and as and4, desc as desc5, eq as eq10, sql as sql5 } from "drizzle-orm";
+function asRows2(result) {
+  if (Array.isArray(result)) return result;
+  const nested = result?.rows;
+  if (Array.isArray(nested)) return nested;
+  return [];
+}
+function inviteCode2() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+async function ensureGuestUser(deviceId, name) {
+  const openId = guestOpenId(deviceId);
+  await upsertUser({
+    openId,
+    name: (name || "\u6478\u9C7C\u8FBE\u4EBA").slice(0, 32),
+    loginMethod: "guest",
+    lastSignedIn: /* @__PURE__ */ new Date()
+  });
+  let user = await getUserByOpenId(openId);
+  if (!user) throw new Error("failed to resolve guest user");
+  if (!user.inviteCode) {
+    const database = await getDb();
+    if (database) {
+      let code = inviteCode2();
+      for (let i = 0; i < 8; i++) {
+        const clash = await database.select().from(users).where(eq10(users.inviteCode, code)).limit(1);
+        if (clash.length === 0) break;
+        code = inviteCode2();
+      }
+      await database.update(users).set({ inviteCode: code, updatedAt: /* @__PURE__ */ new Date() }).where(eq10(users.id, user.id));
+      user = await getUserByOpenId(openId);
+    }
+  }
+  return user;
+}
+async function pgAvailable() {
+  const database = await getDb();
+  return Boolean(database);
+}
+function pgHealth() {
+  return {
+    ok: true,
+    service: "moyu-fortune",
+    version: "path-c-1.0",
+    persistence: "postgres",
+    note: "light REST is a thin Postgres alias of tRPC (single track)"
+  };
+}
+async function recordDrawPg(input) {
+  const deviceId = String(input.deviceId || "").slice(0, 80);
+  if (!deviceId) throw new Error("deviceId required");
+  const user = await ensureGuestUser(deviceId, input.name);
+  const database = await getDb();
+  if (!database) throw new Error("database unavailable");
+  const level = String(input.level || "\u5C0F\u5409").slice(0, 8);
+  const emoji = String(input.emoji || "\u{1F41F}").slice(0, 8);
+  const percent = Math.max(0, Math.min(100, Number(input.percent) || 0));
+  const message = String(input.message || "").slice(0, 240);
+  const suggestedTime = String(input.suggestedTime || "").slice(0, 32);
+  const avatar = String(input.avatar || "").slice(0, 64);
+  const inserted = await database.insert(fortuneHistory).values({
+    userId: user.id,
+    level,
+    emoji,
+    percent,
+    message: message || null,
+    suggestedTime: suggestedTime || null,
+    avatar: avatar || null
+  }).returning();
+  const row = inserted[0];
+  return {
+    id: String(row?.id ?? ""),
+    deviceId,
+    name: user.name || "\u6478\u9C7C\u8FBE\u4EBA",
+    level,
+    emoji,
+    percent,
+    message,
+    suggestedTime,
+    avatar,
+    createdAt: (row?.createdAt || /* @__PURE__ */ new Date()).toISOString()
+  };
+}
+async function getHistoryPg(deviceId, limit = 30) {
+  const idKey = String(deviceId || "").slice(0, 80);
+  if (!idKey) return [];
+  const user = await getUserByOpenId(guestOpenId(idKey));
+  if (!user) return [];
+  const database = await getDb();
+  if (!database) return [];
+  const lim = Math.max(1, Math.min(100, limit));
+  const rows = await database.select().from(fortuneHistory).where(eq10(fortuneHistory.userId, user.id)).orderBy(desc5(fortuneHistory.createdAt)).limit(lim);
+  return rows.map((r) => ({
+    id: String(r.id),
+    deviceId: idKey,
+    name: user.name || "\u6478\u9C7C\u8FBE\u4EBA",
+    level: r.level,
+    emoji: r.emoji,
+    percent: r.percent,
+    message: r.message || "",
+    suggestedTime: r.suggestedTime || "",
+    avatar: r.avatar || "",
+    createdAt: r.createdAt.toISOString()
+  }));
+}
+async function getLeaderboardPg(limit = 30) {
+  const database = await getDb();
+  if (!database) {
+    return { streak: [], weekly: [], global: { totalDraws: 0, uniqueDevices: 0 } };
+  }
+  const lim = Math.max(1, Math.min(50, limit));
+  const streakResult = await database.execute(sql5`
+    WITH user_dates AS (
+      SELECT
+        "userId" AS user_id,
+        ("createdAt")::date AS draw_date
+      FROM fortune_history
+      GROUP BY "userId", ("createdAt")::date
+    ),
+    numbered AS (
+      SELECT
+        user_id,
+        draw_date,
+        draw_date - (ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY draw_date))::int AS streak_group
+      FROM user_dates
+    ),
+    streak_counts AS (
+      SELECT
+        user_id,
+        streak_group,
+        COUNT(*)::int AS streak_length,
+        MAX(draw_date) AS last_date
+      FROM numbered
+      GROUP BY user_id, streak_group
+    ),
+    current_streaks AS (
+      SELECT DISTINCT ON (sc.user_id)
+        sc.user_id,
+        sc.streak_length,
+        sc.last_date
+      FROM streak_counts sc
+      WHERE sc.last_date >= CURRENT_DATE - INTERVAL '1 day'
+      ORDER BY sc.user_id, sc.streak_length DESC, sc.last_date DESC
+    )
+    SELECT
+      cs.user_id AS "userId",
+      u.name,
+      u."openId",
+      cs.streak_length AS streak,
+      cs.last_date AS "lastDate"
+    FROM current_streaks cs
+    JOIN users u ON cs.user_id = u.id
+    ORDER BY cs.streak_length DESC, cs.last_date DESC
+    LIMIT ${lim}
+  `);
+  const streak = asRows2(streakResult).map((row, index) => {
+    const openId = String(row.openId || "");
+    const deviceId = openId.startsWith("guest_") ? openId.slice(6) : openId;
+    return {
+      rank: index + 1,
+      deviceId,
+      name: row.name || "\u6478\u9C7C\u8FBE\u4EBA",
+      streak: Number(row.streak),
+      lastDate: String(row.lastDate || "").slice(0, 10)
+    };
+  });
+  const weeklyResult = await database.execute(sql5`
+    SELECT DISTINCT ON (fh."userId")
+      fh."userId" AS "userId",
+      u.name,
+      u."openId",
+      fh.percent AS "bestPercent",
+      fh.level,
+      fh.emoji
+    FROM fortune_history fh
+    JOIN users u ON u.id = fh."userId"
+    WHERE fh."createdAt" >= NOW() - INTERVAL '7 days'
+    ORDER BY fh."userId", fh.percent DESC, fh."createdAt" DESC
+  `);
+  const weekly = asRows2(weeklyResult).sort((a, b) => Number(b.bestPercent) - Number(a.bestPercent)).slice(0, lim).map((row, index) => {
+    const openId = String(row.openId || "");
+    const deviceId = openId.startsWith("guest_") ? openId.slice(6) : openId;
+    return {
+      rank: index + 1,
+      deviceId,
+      name: row.name || "\u6478\u9C7C\u8FBE\u4EBA",
+      bestPercent: Number(row.bestPercent),
+      level: String(row.level || ""),
+      emoji: String(row.emoji || "")
+    };
+  });
+  const globalResult = await database.execute(sql5`
+    SELECT
+      (SELECT COUNT(*)::int FROM fortune_history) AS "totalDraws",
+      (SELECT COUNT(DISTINCT "userId")::int FROM fortune_history) AS "uniqueDevices"
+  `);
+  const g = asRows2(globalResult)[0] || {};
+  return {
+    streak,
+    weekly,
+    global: {
+      totalDraws: Number(g.totalDraws || 0),
+      uniqueDevices: Number(g.uniqueDevices || 0)
+    }
+  };
+}
+async function submitFeedbackPg(input) {
+  const content = String(input.content || "").trim().slice(0, 1e3);
+  if (!content) throw new Error("content required");
+  const typeRaw = String(input.type || "suggestion");
+  const type = ["bug", "feature", "suggestion", "other"].includes(typeRaw) ? typeRaw : "other";
+  let userId = null;
+  const deviceId = String(input.deviceId || "").slice(0, 80);
+  if (deviceId) {
+    const user = await ensureGuestUser(deviceId);
+    userId = user.id;
+  }
+  const database = await getDb();
+  if (!database) throw new Error("database unavailable");
+  const inserted = await database.insert(feedback).values({
+    userId,
+    type,
+    content,
+    contact: String(input.contact || "").slice(0, 255) || null,
+    userAgent: String(input.userAgent || "").slice(0, 500) || null
+  }).returning();
+  const row = inserted[0];
+  return {
+    id: String(row?.id ?? ""),
+    deviceId,
+    type,
+    content,
+    contact: String(input.contact || ""),
+    userAgent: String(input.userAgent || ""),
+    createdAt: (row?.createdAt || /* @__PURE__ */ new Date()).toISOString()
+  };
+}
+async function listFeedbackPg(limit = 50) {
+  const database = await getDb();
+  if (!database) return [];
+  const lim = Math.max(1, Math.min(100, limit));
+  const rows = await database.select().from(feedback).orderBy(desc5(feedback.createdAt)).limit(lim);
+  return rows.map((r) => ({
+    id: String(r.id),
+    deviceId: "",
+    type: r.type,
+    content: r.content,
+    contact: r.contact || "",
+    userAgent: r.userAgent || "",
+    createdAt: r.createdAt.toISOString()
+  }));
+}
+async function getOrCreateInvitePg(deviceId) {
+  const user = await ensureGuestUser(deviceId);
+  return {
+    code: user.inviteCode || "",
+    ownerDeviceId: deviceId,
+    createdAt: user.createdAt.toISOString()
+  };
+}
+async function getInviteStatsPg(deviceId) {
+  const user = await getUserByOpenId(guestOpenId(deviceId));
+  if (!user) {
+    return { inviteCount: 0, claimedRewards: 0, pendingRewards: 0, uses: [] };
+  }
+  const database = await getDb();
+  if (!database) {
+    return { inviteCount: 0, claimedRewards: 0, pendingRewards: 0, uses: [] };
+  }
+  const rows = await database.select().from(invitations).where(eq10(invitations.inviterId, user.id));
+  const claimed = rows.filter((r) => r.rewardClaimed).length;
+  const pending = rows.filter((r) => !r.rewardClaimed).length;
+  return {
+    inviteCount: rows.length,
+    claimedRewards: claimed,
+    pendingRewards: pending,
+    uses: rows.map((r) => ({
+      id: String(r.id),
+      inviteeId: r.inviteeId,
+      rewardDays: r.rewardDays,
+      rewardClaimed: r.rewardClaimed,
+      createdAt: r.createdAt.toISOString()
+    }))
+  };
+}
+async function applyInviteCodePg(input) {
+  const code = String(input.inviteCode || "").trim().toUpperCase();
+  if (!code) throw new Error("inviteCode required");
+  const invitee = await ensureGuestUser(input.deviceId, input.name);
+  const database = await getDb();
+  if (!database) throw new Error("database unavailable");
+  const owners = await database.select().from(users).where(eq10(users.inviteCode, code)).limit(1);
+  if (owners.length === 0) throw new Error("invalid_invite");
+  const owner = owners[0];
+  if (owner.id === invitee.id) throw new Error("self_invite");
+  const existing = await database.select().from(invitations).where(eq10(invitations.inviteeId, invitee.id)).limit(1);
+  if (existing.length > 0) throw new Error("already_invited");
+  await database.insert(invitations).values({
+    inviterId: owner.id,
+    inviteeId: invitee.id,
+    rewardDays: 3,
+    rewardClaimed: false
+  });
+  await database.update(users).set({ invitedBy: owner.id, updatedAt: /* @__PURE__ */ new Date() }).where(eq10(users.id, invitee.id));
+  return { ok: true, inviterName: owner.name || "\u6478\u9C7C\u8FBE\u4EBA" };
+}
+async function claimInviteRewardPg(input) {
+  const user = await ensureGuestUser(input.deviceId);
+  const database = await getDb();
+  if (!database) throw new Error("database unavailable");
+  const id2 = Number(input.invitationId);
+  if (!Number.isFinite(id2)) throw new Error("invitationId required");
+  const rows = await database.select().from(invitations).where(and4(eq10(invitations.id, id2), eq10(invitations.inviterId, user.id))).limit(1);
+  if (rows.length === 0) throw new Error("not_found");
+  const row = rows[0];
+  if (row.rewardClaimed) throw new Error("already_claimed");
+  await database.update(invitations).set({ rewardClaimed: true }).where(eq10(invitations.id, row.id));
+  return { ok: true, rewardDays: row.rewardDays, claimed: true };
+}
+async function getProfilePg(deviceId) {
+  const user = await ensureGuestUser(deviceId);
+  let avatar = "";
+  try {
+    const unlocked = user.unlockedAvatars ? JSON.parse(user.unlockedAvatars) : [];
+    avatar = unlocked[0] || "";
+  } catch {
+    avatar = "";
+  }
+  return {
+    deviceId,
+    name: user.name || "\u6478\u9C7C\u8FBE\u4EBA",
+    avatar,
+    updatedAt: user.updatedAt.toISOString()
+  };
+}
+async function updateProfilePg(input) {
+  const user = await ensureGuestUser(input.deviceId, input.name);
+  const database = await getDb();
+  if (!database) throw new Error("database unavailable");
+  const patch = { updatedAt: /* @__PURE__ */ new Date() };
+  if (input.name != null) patch.name = String(input.name).slice(0, 32);
+  if (input.avatar != null) {
+    let unlocked = [];
+    try {
+      unlocked = user.unlockedAvatars ? JSON.parse(user.unlockedAvatars) : [];
+    } catch {
+      unlocked = [];
+    }
+    const av = String(input.avatar).slice(0, 64);
+    if (av && !unlocked.includes(av)) unlocked.unshift(av);
+    patch.unlockedAvatars = JSON.stringify(unlocked.slice(0, 50));
+  }
+  await database.update(users).set(patch).where(eq10(users.id, user.id));
+  return getProfilePg(input.deviceId);
+}
+
 // server/light/routes.ts
 var ALLOWED_ORIGINS = new Set(
   (process.env.MOYU_CORS_ORIGINS || "https://chillworks.ai,https://www.chillworks.ai,http://localhost:3000,http://127.0.0.1:3000").split(",").map((s) => s.trim()).filter(Boolean)
@@ -2943,26 +3303,32 @@ function deviceIdOf(req, body) {
     body && body.deviceId || req.query.deviceId || req.headers["x-device-id"] || ""
   );
 }
+async function usePostgres() {
+  if (process.env.MOYU_LIGHT_ONLY === "1") return false;
+  return pgAvailable();
+}
 function registerLightApi(app) {
   app.use(cors);
   app.use(async (_req, _res, next) => {
     try {
-      await ensureStoreReady();
+      if (!await usePostgres()) {
+        await ensureStoreReady();
+      }
       next();
     } catch (e) {
       next(e);
     }
   });
-  app.get("/health", (_req, res) => {
-    res.json(lightHealth());
+  app.get("/health", async (_req, res) => {
+    res.json(await usePostgres() ? pgHealth() : lightHealth());
   });
-  app.get("/api/light/health", (_req, res) => {
-    res.json(lightHealth());
+  app.get("/api/light/health", async (_req, res) => {
+    res.json(await usePostgres() ? pgHealth() : lightHealth());
   });
-  app.post("/api/light/draw", rateLimit(6e4, 40), (req, res) => {
+  app.post("/api/light/draw", rateLimit(6e4, 40), async (req, res) => {
     try {
       const body = req.body || {};
-      const draw = recordDraw({
+      const payload = {
         deviceId: deviceIdOf(req, body),
         name: String(body.name || req.headers["x-device-name"] || ""),
         level: String(body.level || ""),
@@ -2971,7 +3337,8 @@ function registerLightApi(app) {
         message: body.message != null ? String(body.message) : void 0,
         suggestedTime: body.suggestedTime != null ? String(body.suggestedTime) : void 0,
         avatar: body.avatar != null ? String(body.avatar) : void 0
-      });
+      };
+      const draw = await usePostgres() ? await recordDrawPg(payload) : recordDraw(payload);
       res.json({ ok: true, draw });
     } catch (e) {
       res.status(400).json({
@@ -2980,27 +3347,28 @@ function registerLightApi(app) {
       });
     }
   });
-  app.get("/api/light/history", (req, res) => {
+  app.get("/api/light/history", async (req, res) => {
     const deviceId = deviceIdOf(req);
     const limit = Number(req.query.limit || 30);
-    const history = getHistory(deviceId, limit);
+    const history = await usePostgres() ? await getHistoryPg(deviceId, limit) : getHistory(deviceId, limit);
     res.json({ ok: true, history });
   });
-  app.get("/api/light/leaderboard", (req, res) => {
+  app.get("/api/light/leaderboard", async (req, res) => {
     const limit = Number(req.query.limit || 30);
-    const board = getLeaderboard(limit);
+    const board = await usePostgres() ? await getLeaderboardPg(limit) : getLeaderboard(limit);
     res.json({ ok: true, ...board });
   });
-  app.post("/api/light/feedback", rateLimit(6e4, 20), (req, res) => {
+  app.post("/api/light/feedback", rateLimit(6e4, 20), async (req, res) => {
     try {
       const body = req.body || {};
-      const item = submitFeedback({
+      const payload = {
         deviceId: deviceIdOf(req, body),
         type: body.type != null ? String(body.type) : void 0,
         content: String(body.content || ""),
         contact: body.contact != null ? String(body.contact) : void 0,
         userAgent: body.userAgent != null ? String(body.userAgent) : String(req.headers["user-agent"] || "")
-      });
+      };
+      const item = await usePostgres() ? await submitFeedbackPg(payload) : submitFeedback(payload);
       res.json({ ok: true, feedback: item });
     } catch (e) {
       res.status(400).json({
@@ -3009,13 +3377,20 @@ function registerLightApi(app) {
       });
     }
   });
-  app.get("/api/light/feedback", (req, res) => {
+  app.get("/api/light/feedback", async (req, res) => {
     const limit = Number(req.query.limit || 50);
-    res.json({ ok: true, feedback: listFeedback(limit) });
+    const list = await usePostgres() ? await listFeedbackPg(limit) : listFeedback(limit);
+    res.json({ ok: true, feedback: list });
   });
-  app.get("/api/light/invite", (req, res) => {
+  app.get("/api/light/invite", async (req, res) => {
     try {
       const deviceId = deviceIdOf(req);
+      if (await usePostgres()) {
+        const invite2 = await getOrCreateInvitePg(deviceId);
+        const stats2 = await getInviteStatsPg(deviceId);
+        res.json({ ok: true, ...invite2, ...stats2 });
+        return;
+      }
       const invite = getOrCreateInvite(deviceId);
       const stats = getInviteStats(deviceId);
       res.json({ ok: true, ...invite, ...stats });
@@ -3026,13 +3401,17 @@ function registerLightApi(app) {
       });
     }
   });
-  app.post("/api/light/invite", rateLimit(6e4, 30), (req, res) => {
+  app.post("/api/light/invite", rateLimit(6e4, 30), async (req, res) => {
     try {
       const body = req.body || {};
       const action = String(body.action || "apply");
       const deviceId = deviceIdOf(req, body);
+      const pg = await usePostgres();
       if (action === "claim") {
-        const result2 = claimInviteReward({
+        const result2 = pg ? await claimInviteRewardPg({
+          deviceId,
+          invitationId: String(body.invitationId || "")
+        }) : claimInviteReward({
           deviceId,
           invitationId: String(body.invitationId || "")
         });
@@ -3040,12 +3419,22 @@ function registerLightApi(app) {
         return;
       }
       if (action === "ensure") {
+        if (pg) {
+          const invite2 = await getOrCreateInvitePg(deviceId);
+          const stats2 = await getInviteStatsPg(deviceId);
+          res.json({ ok: true, ...invite2, ...stats2 });
+          return;
+        }
         const invite = getOrCreateInvite(deviceId);
         const stats = getInviteStats(deviceId);
         res.json({ ok: true, ...invite, ...stats });
         return;
       }
-      const result = applyInviteCode({
+      const result = pg ? await applyInviteCodePg({
+        deviceId,
+        inviteCode: String(body.inviteCode || body.code || ""),
+        name: body.name != null ? String(body.name) : void 0
+      }) : applyInviteCode({
         deviceId,
         inviteCode: String(body.inviteCode || body.code || ""),
         name: body.name != null ? String(body.name) : void 0
@@ -3058,10 +3447,11 @@ function registerLightApi(app) {
       });
     }
   });
-  app.get("/api/light/profile", (req, res) => {
+  app.get("/api/light/profile", async (req, res) => {
     try {
       const deviceId = deviceIdOf(req);
-      res.json({ ok: true, profile: getProfile(deviceId) });
+      const profile = await usePostgres() ? await getProfilePg(deviceId) : getProfile(deviceId);
+      res.json({ ok: true, profile });
     } catch (e) {
       res.status(400).json({
         ok: false,
@@ -3069,10 +3459,14 @@ function registerLightApi(app) {
       });
     }
   });
-  app.post("/api/light/profile", rateLimit(6e4, 30), (req, res) => {
+  app.post("/api/light/profile", rateLimit(6e4, 30), async (req, res) => {
     try {
       const body = req.body || {};
-      const profile = updateProfile({
+      const profile = await usePostgres() ? await updateProfilePg({
+        deviceId: deviceIdOf(req, body),
+        name: body.name != null ? String(body.name) : void 0,
+        avatar: body.avatar != null ? String(body.avatar) : void 0
+      }) : updateProfile({
         deviceId: deviceIdOf(req, body),
         name: body.name != null ? String(body.name) : void 0,
         avatar: body.avatar != null ? String(body.avatar) : void 0
