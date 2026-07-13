@@ -1413,6 +1413,11 @@ function available(cfg, key) {
   const entry = cfg?.[key];
   return Boolean(entry?.available);
 }
+function preferenceOn(cfg, key) {
+  const entry = cfg?.[key];
+  const pref = entry?.display_preference;
+  return pref?.value === "on" || pref?.preference === "on";
+}
 async function getCheckoutPaymentMethodTypes(currency) {
   const now = Date.now();
   if (cachedTypes && now - cachedTypes.at < 5 * 6e4) {
@@ -1456,7 +1461,7 @@ async function getPaymentMethodsStatus() {
     status.applePay = available(cfg, "apple_pay");
     status.googlePay = available(cfg, "google_pay");
     status.paypal = available(cfg, "paypal");
-    status.link = available(cfg, "link");
+    status.link = preferenceOn(cfg, "link") || available(cfg, "link");
     status.card = available(cfg, "card") || true;
     if (!status.paypal) {
       status.note = "PayPal via Stripe is only for EU/UK accounts; this US account cannot enable it.";
