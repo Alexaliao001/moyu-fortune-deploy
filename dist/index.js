@@ -4,21 +4,148 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// server/_core/index.ts
+// server/_core/apiOnlyEntry.ts
 import "dotenv/config";
-import fs4 from "node:fs";
-import path4 from "node:path";
-import express2 from "express";
+import express from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 
+// server/_core/systemRouter.ts
+import { z } from "zod";
+
+// server/_core/notification.ts
+import { TRPCError } from "@trpc/server";
+
+// server/_core/env.ts
+var ENV = {
+  appId: process.env.VITE_APP_ID ?? "",
+  cookieSecret: process.env.JWT_SECRET ?? "",
+  databaseUrl: process.env.DATABASE_URL ?? "",
+  oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
+  ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
+  isProduction: process.env.NODE_ENV === "production",
+  forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
+  forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? ""
+};
+
+// server/_core/notification.ts
+var TITLE_MAX_LENGTH = 1200;
+var CONTENT_MAX_LENGTH = 2e4;
+var trimValue = (value) => value.trim();
+var isNonEmptyString = (value) => typeof value === "string" && value.trim().length > 0;
+var buildEndpointUrl = (baseUrl) => {
+  const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  return new URL(
+    "webdevtoken.v1.WebDevService/SendNotification",
+    normalizedBase
+  ).toString();
+};
+var validatePayload = (input) => {
+  if (!isNonEmptyString(input.title)) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Notification title is required."
+    });
+  }
+  if (!isNonEmptyString(input.content)) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Notification content is required."
+    });
+  }
+  const title = trimValue(input.title);
+  const content = trimValue(input.content);
+  if (title.length > TITLE_MAX_LENGTH) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `Notification title must be at most ${TITLE_MAX_LENGTH} characters.`
+    });
+  }
+  if (content.length > CONTENT_MAX_LENGTH) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `Notification content must be at most ${CONTENT_MAX_LENGTH} characters.`
+    });
+  }
+  return { title, content };
+};
+async function notifyOwner(payload) {
+  const { title, content } = validatePayload(payload);
+  if (!ENV.forgeApiUrl) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Notification service URL is not configured."
+    });
+  }
+  if (!ENV.forgeApiKey) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Notification service API key is not configured."
+    });
+  }
+  const endpoint = buildEndpointUrl(ENV.forgeApiUrl);
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        authorization: `Bearer ${ENV.forgeApiKey}`,
+        "content-type": "application/json",
+        "connect-protocol-version": "1"
+      },
+      body: JSON.stringify({ title, content })
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      console.warn(
+        `[Notification] Failed to notify owner (${response.status} ${response.statusText})${detail ? `: ${detail}` : ""}`
+      );
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.warn("[Notification] Error calling notification service:", error);
+    return false;
+  }
+}
+
+// server/_core/trpc.ts
+import { TRPCError as TRPCError2 } from "@trpc/server";
+import { initTRPC } from "@trpc/server";
+import superjson from "superjson";
+
 // shared/const.ts
 var COOKIE_NAME = "app_session_id";
 var ONE_YEAR_MS = 1e3 * 60 * 60 * 24 * 365;
-var AXIOS_TIMEOUT_MS = 3e4;
 var UNAUTHED_ERR_MSG = "Please login (10001)";
 var NOT_ADMIN_ERR_MSG = "You do not have required permission (10002)";
+
+// server/_core/trpc.ts
+var t = initTRPC.context().create({
+  transformer: superjson
+});
+var router = t.router;
+var publicProcedure = t.procedure;
+var protectedProcedure = t.procedure.use(({ ctx, next }) => {
+  if (!ctx.user) {
+    throw new TRPCError2({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+  }
+  return next({
+    ctx: {
+      ...ctx,
+      user: ctx.user
+    }
+  });
+});
+var adminProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role !== "admin") {
+    throw new TRPCError2({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
+  }
+  return next({ ctx });
+});
 
 // server/db.ts
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -175,25 +302,11 @@ var notifications = pgTable("notifications", {
   createdAt: timestamp("createdAt").defaultNow().notNull()
 });
 
-// server/_core/env.ts
-var ENV2 = {
-  appId: process.env.VITE_APP_ID ?? "",
-  cookieSecret: process.env.JWT_SECRET ?? "",
-  databaseUrl: process.env.DATABASE_URL ?? "",
-  oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
-  ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
-  isProduction: process.env.NODE_ENV === "production",
-  forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
-  forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
-  stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",
-  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? ""
-};
-
 // server/db.ts
 var _client = null;
 var _db = null;
 async function getDb() {
-  const url = process.env.DATABASE_URL || ENV2.databaseUrl;
+  const url = process.env.DATABASE_URL || ENV.databaseUrl;
   if (!_db && url) {
     try {
       _client = postgres(url, {
@@ -231,7 +344,7 @@ async function upsertUser(user) {
     if (user.passwordHash !== void 0) values.passwordHash = user.passwordHash ?? null;
     if (user.role !== void 0) {
       values.role = user.role;
-    } else if (user.openId === ENV2.ownerOpenId) {
+    } else if (user.openId === ENV.ownerOpenId) {
       values.role = "admin";
     }
     await db.insert(users).values(values).onConflictDoUpdate({
@@ -273,407 +386,6 @@ async function getUserById(id2) {
   return result.length > 0 ? result[0] : void 0;
 }
 
-// server/_core/cookies.ts
-function isSecureRequest(req) {
-  if (req.protocol === "https") return true;
-  const forwardedProto = req.headers["x-forwarded-proto"];
-  if (!forwardedProto) return false;
-  const protoList = Array.isArray(forwardedProto) ? forwardedProto : forwardedProto.split(",");
-  return protoList.some((proto) => proto.trim().toLowerCase() === "https");
-}
-function getSessionCookieOptions(req) {
-  const secure = isSecureRequest(req) || ENV_FORCE_SECURE();
-  return {
-    httpOnly: true,
-    path: "/",
-    sameSite: secure ? "none" : "lax",
-    secure
-  };
-}
-function ENV_FORCE_SECURE() {
-  return process.env.NODE_ENV === "production";
-}
-
-// shared/_core/errors.ts
-var HttpError = class extends Error {
-  constructor(statusCode, message) {
-    super(message);
-    this.statusCode = statusCode;
-    this.name = "HttpError";
-  }
-};
-var ForbiddenError = (msg) => new HttpError(403, msg);
-
-// server/_core/sdk.ts
-import axios from "axios";
-import { parse as parseCookieHeader } from "cookie";
-import { SignJWT, jwtVerify } from "jose";
-var isNonEmptyString = (value) => typeof value === "string" && value.length > 0;
-var EXCHANGE_TOKEN_PATH = `/webdev.v1.WebDevAuthPublicService/ExchangeToken`;
-var GET_USER_INFO_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfo`;
-var GET_USER_INFO_WITH_JWT_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfoWithJwt`;
-var OAuthService = class {
-  constructor(client) {
-    this.client = client;
-    console.log("[OAuth] Initialized with baseURL:", ENV2.oAuthServerUrl);
-    if (!ENV2.oAuthServerUrl) {
-      console.error(
-        "[OAuth] ERROR: OAUTH_SERVER_URL is not configured! Set OAUTH_SERVER_URL environment variable."
-      );
-    }
-  }
-  decodeState(state) {
-    const redirectUri = atob(state);
-    return redirectUri;
-  }
-  async getTokenByCode(code, state) {
-    const payload = {
-      clientId: ENV2.appId,
-      grantType: "authorization_code",
-      code,
-      redirectUri: this.decodeState(state)
-    };
-    const { data } = await this.client.post(
-      EXCHANGE_TOKEN_PATH,
-      payload
-    );
-    return data;
-  }
-  async getUserInfoByToken(token) {
-    const { data } = await this.client.post(
-      GET_USER_INFO_PATH,
-      {
-        accessToken: token.accessToken
-      }
-    );
-    return data;
-  }
-};
-var createOAuthHttpClient = () => axios.create({
-  baseURL: ENV2.oAuthServerUrl,
-  timeout: AXIOS_TIMEOUT_MS
-});
-var SDKServer = class {
-  client;
-  oauthService;
-  constructor(client = createOAuthHttpClient()) {
-    this.client = client;
-    this.oauthService = new OAuthService(this.client);
-  }
-  deriveLoginMethod(platforms, fallback) {
-    if (fallback && fallback.length > 0) return fallback;
-    if (!Array.isArray(platforms) || platforms.length === 0) return null;
-    const set = new Set(
-      platforms.filter((p) => typeof p === "string")
-    );
-    if (set.has("REGISTERED_PLATFORM_EMAIL")) return "email";
-    if (set.has("REGISTERED_PLATFORM_GOOGLE")) return "google";
-    if (set.has("REGISTERED_PLATFORM_APPLE")) return "apple";
-    if (set.has("REGISTERED_PLATFORM_MICROSOFT") || set.has("REGISTERED_PLATFORM_AZURE"))
-      return "microsoft";
-    if (set.has("REGISTERED_PLATFORM_GITHUB")) return "github";
-    const first = Array.from(set)[0];
-    return first ? first.toLowerCase() : null;
-  }
-  /**
-   * Exchange OAuth authorization code for access token
-   * @example
-   * const tokenResponse = await sdk.exchangeCodeForToken(code, state);
-   */
-  async exchangeCodeForToken(code, state) {
-    return this.oauthService.getTokenByCode(code, state);
-  }
-  /**
-   * Get user information using access token
-   * @example
-   * const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
-   */
-  async getUserInfo(accessToken) {
-    const data = await this.oauthService.getUserInfoByToken({
-      accessToken
-    });
-    const loginMethod = this.deriveLoginMethod(
-      data?.platforms,
-      data?.platform ?? data.platform ?? null
-    );
-    return {
-      ...data,
-      platform: loginMethod,
-      loginMethod
-    };
-  }
-  parseCookies(cookieHeader) {
-    if (!cookieHeader) {
-      return /* @__PURE__ */ new Map();
-    }
-    const parsed = parseCookieHeader(cookieHeader);
-    return new Map(Object.entries(parsed));
-  }
-  getSessionSecret() {
-    const secret = ENV2.cookieSecret;
-    return new TextEncoder().encode(secret);
-  }
-  /**
-   * Create a session token for a Manus user openId
-   * @example
-   * const sessionToken = await sdk.createSessionToken(userInfo.openId);
-   */
-  async createSessionToken(openId, options = {}) {
-    return this.signSession(
-      {
-        openId,
-        appId: ENV2.appId,
-        name: options.name || ""
-      },
-      options
-    );
-  }
-  async signSession(payload, options = {}) {
-    const issuedAt = Date.now();
-    const expiresInMs = options.expiresInMs ?? ONE_YEAR_MS;
-    const expirationSeconds = Math.floor((issuedAt + expiresInMs) / 1e3);
-    const secretKey = this.getSessionSecret();
-    return new SignJWT({
-      openId: payload.openId,
-      appId: payload.appId,
-      name: payload.name
-    }).setProtectedHeader({ alg: "HS256", typ: "JWT" }).setExpirationTime(expirationSeconds).sign(secretKey);
-  }
-  async verifySession(cookieValue) {
-    if (!cookieValue) {
-      console.warn("[Auth] Missing session cookie");
-      return null;
-    }
-    try {
-      const secretKey = this.getSessionSecret();
-      const { payload } = await jwtVerify(cookieValue, secretKey, {
-        algorithms: ["HS256"]
-      });
-      const { openId, appId, name } = payload;
-      if (!isNonEmptyString(openId) || !isNonEmptyString(appId) || !isNonEmptyString(name)) {
-        console.warn("[Auth] Session payload missing required fields");
-        return null;
-      }
-      return {
-        openId,
-        appId,
-        name
-      };
-    } catch (error) {
-      console.warn("[Auth] Session verification failed", String(error));
-      return null;
-    }
-  }
-  async getUserInfoWithJwt(jwtToken) {
-    const payload = {
-      jwtToken,
-      projectId: ENV2.appId
-    };
-    const { data } = await this.client.post(
-      GET_USER_INFO_WITH_JWT_PATH,
-      payload
-    );
-    const loginMethod = this.deriveLoginMethod(
-      data?.platforms,
-      data?.platform ?? data.platform ?? null
-    );
-    return {
-      ...data,
-      platform: loginMethod,
-      loginMethod
-    };
-  }
-  async authenticateRequest(req) {
-    const cookies = this.parseCookies(req.headers.cookie);
-    const sessionCookie = cookies.get(COOKIE_NAME);
-    const session = await this.verifySession(sessionCookie);
-    if (!session) {
-      throw ForbiddenError("Invalid session cookie");
-    }
-    const sessionUserId = session.openId;
-    const signedInAt = /* @__PURE__ */ new Date();
-    let user = await getUserByOpenId(sessionUserId);
-    if (!user) {
-      try {
-        const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
-        await upsertUser({
-          openId: userInfo.openId,
-          name: userInfo.name || null,
-          email: userInfo.email ?? null,
-          loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
-          lastSignedIn: signedInAt
-        });
-        user = await getUserByOpenId(userInfo.openId);
-      } catch (error) {
-        console.error("[Auth] Failed to sync user from OAuth:", error);
-        throw ForbiddenError("Failed to sync user info");
-      }
-    }
-    if (!user) {
-      throw ForbiddenError("User not found");
-    }
-    await upsertUser({
-      openId: user.openId,
-      lastSignedIn: signedInAt
-    });
-    return user;
-  }
-};
-var sdk = new SDKServer();
-
-// server/_core/oauth.ts
-function getQueryParam(req, key) {
-  const value = req.query[key];
-  return typeof value === "string" ? value : void 0;
-}
-function registerOAuthRoutes(app) {
-  app.get("/api/oauth/callback", async (req, res) => {
-    const code = getQueryParam(req, "code");
-    const state = getQueryParam(req, "state");
-    if (!code || !state) {
-      res.status(400).json({ error: "code and state are required" });
-      return;
-    }
-    try {
-      const tokenResponse = await sdk.exchangeCodeForToken(code, state);
-      const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
-      if (!userInfo.openId) {
-        res.status(400).json({ error: "openId missing from user info" });
-        return;
-      }
-      await upsertUser({
-        openId: userInfo.openId,
-        name: userInfo.name || null,
-        email: userInfo.email ?? null,
-        loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
-        lastSignedIn: /* @__PURE__ */ new Date()
-      });
-      const sessionToken = await sdk.createSessionToken(userInfo.openId, {
-        name: userInfo.name || "",
-        expiresInMs: ONE_YEAR_MS
-      });
-      const cookieOptions = getSessionCookieOptions(req);
-      res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-      res.redirect(302, "/");
-    } catch (error) {
-      console.error("[OAuth] Callback failed", error);
-      res.status(500).json({ error: "OAuth callback failed" });
-    }
-  });
-}
-
-// server/_core/systemRouter.ts
-import { z } from "zod";
-
-// server/_core/notification.ts
-import { TRPCError } from "@trpc/server";
-var TITLE_MAX_LENGTH = 1200;
-var CONTENT_MAX_LENGTH = 2e4;
-var trimValue = (value) => value.trim();
-var isNonEmptyString2 = (value) => typeof value === "string" && value.trim().length > 0;
-var buildEndpointUrl = (baseUrl) => {
-  const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-  return new URL(
-    "webdevtoken.v1.WebDevService/SendNotification",
-    normalizedBase
-  ).toString();
-};
-var validatePayload = (input) => {
-  if (!isNonEmptyString2(input.title)) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "Notification title is required."
-    });
-  }
-  if (!isNonEmptyString2(input.content)) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "Notification content is required."
-    });
-  }
-  const title = trimValue(input.title);
-  const content = trimValue(input.content);
-  if (title.length > TITLE_MAX_LENGTH) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: `Notification title must be at most ${TITLE_MAX_LENGTH} characters.`
-    });
-  }
-  if (content.length > CONTENT_MAX_LENGTH) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: `Notification content must be at most ${CONTENT_MAX_LENGTH} characters.`
-    });
-  }
-  return { title, content };
-};
-async function notifyOwner(payload) {
-  const { title, content } = validatePayload(payload);
-  if (!ENV2.forgeApiUrl) {
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: "Notification service URL is not configured."
-    });
-  }
-  if (!ENV2.forgeApiKey) {
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: "Notification service API key is not configured."
-    });
-  }
-  const endpoint = buildEndpointUrl(ENV2.forgeApiUrl);
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        authorization: `Bearer ${ENV2.forgeApiKey}`,
-        "content-type": "application/json",
-        "connect-protocol-version": "1"
-      },
-      body: JSON.stringify({ title, content })
-    });
-    if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      console.warn(
-        `[Notification] Failed to notify owner (${response.status} ${response.statusText})${detail ? `: ${detail}` : ""}`
-      );
-      return false;
-    }
-    return true;
-  } catch (error) {
-    console.warn("[Notification] Error calling notification service:", error);
-    return false;
-  }
-}
-
-// server/_core/trpc.ts
-import { TRPCError as TRPCError2 } from "@trpc/server";
-import { initTRPC } from "@trpc/server";
-import superjson from "superjson";
-var t = initTRPC.context().create({
-  transformer: superjson
-});
-var router = t.router;
-var publicProcedure = t.procedure;
-var protectedProcedure = t.procedure.use(({ ctx, next }) => {
-  if (!ctx.user) {
-    throw new TRPCError2({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
-  }
-  return next({
-    ctx: {
-      ...ctx,
-      user: ctx.user
-    }
-  });
-});
-var adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (ctx.user.role !== "admin") {
-    throw new TRPCError2({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
-  }
-  return next({ ctx });
-});
-
 // server/_core/systemRouter.ts
 var systemRouter = router({
   health: publicProcedure.input(
@@ -687,8 +399,8 @@ var systemRouter = router({
       service: "moyu-fortune",
       version: "path-c-1.0",
       database: Boolean(db),
-      stripe: Boolean(ENV2.stripeSecretKey),
-      llm: Boolean(ENV2.forgeApiKey)
+      stripe: Boolean(ENV.stripeSecretKey),
+      llm: Boolean(ENV.forgeApiKey)
     };
   }),
   notifyOwner: adminProcedure.input(
@@ -711,25 +423,48 @@ import { eq as eq2 } from "drizzle-orm";
 
 // server/_core/guestAuth.ts
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { SignJWT as SignJWT2, jwtVerify as jwtVerify2 } from "jose";
+import { SignJWT, jwtVerify } from "jose";
+
+// server/_core/cookies.ts
+function isSecureRequest(req) {
+  if (req.protocol === "https") return true;
+  const forwardedProto = req.headers["x-forwarded-proto"];
+  if (!forwardedProto) return false;
+  const protoList = Array.isArray(forwardedProto) ? forwardedProto : forwardedProto.split(",");
+  return protoList.some((proto) => proto.trim().toLowerCase() === "https");
+}
+function getSessionCookieOptions(req) {
+  const secure = isSecureRequest(req) || ENV_FORCE_SECURE();
+  return {
+    httpOnly: true,
+    path: "/",
+    sameSite: secure ? "none" : "lax",
+    secure
+  };
+}
+function ENV_FORCE_SECURE() {
+  return process.env.NODE_ENV === "production";
+}
+
+// server/_core/guestAuth.ts
 function sessionSecret() {
-  const secret = ENV2.cookieSecret || "moyu-dev-insecure-jwt-secret-change-me";
+  const secret = ENV.cookieSecret || "moyu-dev-insecure-jwt-secret-change-me";
   return new TextEncoder().encode(secret);
 }
 async function signSession(payload, options = {}) {
   const issuedAt = Date.now();
   const expiresInMs = options.expiresInMs ?? ONE_YEAR_MS;
   const expirationSeconds = Math.floor((issuedAt + expiresInMs) / 1e3);
-  return new SignJWT2({
+  return new SignJWT({
     openId: payload.openId,
-    appId: payload.appId || ENV2.appId || "moyu-fortune",
+    appId: payload.appId || ENV.appId || "moyu-fortune",
     name: payload.name || ""
   }).setProtectedHeader({ alg: "HS256", typ: "JWT" }).setExpirationTime(expirationSeconds).sign(sessionSecret());
 }
 async function verifySession(cookieValue) {
   if (!cookieValue) return null;
   try {
-    const { payload } = await jwtVerify2(cookieValue, sessionSecret(), {
+    const { payload } = await jwtVerify(cookieValue, sessionSecret(), {
       algorithms: ["HS256"]
     });
     const openId = payload.openId;
@@ -788,7 +523,7 @@ function emailOpenId(email) {
 async function setSessionCookie(req, res, user) {
   const token = await signSession({
     openId: user.openId,
-    appId: ENV2.appId || "moyu-fortune",
+    appId: ENV.appId || "moyu-fortune",
     name: user.name || "\u6478\u9C7C\u8FBE\u4EBA"
   });
   const opts = getSessionCookieOptions(req);
@@ -1027,9 +762,9 @@ var normalizeToolChoice = (toolChoice, tools) => {
   }
   return toolChoice;
 };
-var resolveApiUrl = () => ENV2.forgeApiUrl && ENV2.forgeApiUrl.trim().length > 0 ? `${ENV2.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions` : "https://forge.manus.im/v1/chat/completions";
+var resolveApiUrl = () => ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0 ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions` : "https://forge.manus.im/v1/chat/completions";
 var assertApiKey = () => {
-  if (!ENV2.forgeApiKey) {
+  if (!ENV.forgeApiKey) {
     throw new Error("OPENAI_API_KEY is not configured");
   }
 };
@@ -1105,7 +840,7 @@ async function invokeLLM(params) {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${ENV2.forgeApiKey}`
+      authorization: `Bearer ${ENV.forgeApiKey}`
     },
     body: JSON.stringify(payload)
   });
@@ -1515,10 +1250,10 @@ import Stripe from "stripe";
 var _stripe = null;
 function getStripe() {
   if (!_stripe) {
-    if (!ENV2.stripeSecretKey) {
+    if (!ENV.stripeSecretKey) {
       throw new Error("STRIPE_SECRET_KEY not configured");
     }
-    _stripe = new Stripe(ENV2.stripeSecretKey, {
+    _stripe = new Stripe(ENV.stripeSecretKey, {
       apiVersion: "2025-12-15.clover",
       typescript: true
     });
@@ -1683,9 +1418,13 @@ var stripeRouter = router({
     const user = ctx.user;
     const origin = checkoutOrigin(ctx.req);
     const stripe2 = getStripe();
+    const paymentMethodTypes = ["card"];
+    if (product.currency === "cny") {
+      paymentMethodTypes.push("alipay");
+    }
     const session = await stripe2.checkout.sessions.create({
       mode: "payment",
-      payment_method_types: ["card", "alipay", "wechat_pay"],
+      payment_method_types: paymentMethodTypes,
       line_items: [
         {
           price_data: {
@@ -1709,10 +1448,7 @@ var stripeRouter = router({
         customer_name: user.name || "",
         product_key: input.productKey
       },
-      allow_promotion_codes: true,
-      payment_method_options: {
-        wechat_pay: { client: "web" }
-      }
+      allow_promotion_codes: true
     });
     return {
       checkoutUrl: session.url,
@@ -2471,244 +2207,6 @@ async function createContext(opts) {
   };
 }
 
-// server/_core/vite.ts
-import express from "express";
-import fs2 from "fs";
-import { nanoid } from "nanoid";
-import path2 from "path";
-import { createServer as createViteServer } from "vite";
-
-// vite.config.ts
-import { jsxLocPlugin } from "@builder.io/vite-plugin-jsx-loc";
-import tailwindcss from "@tailwindcss/vite";
-import react from "@vitejs/plugin-react";
-import fs from "node:fs";
-import path from "node:path";
-import { defineConfig } from "vite";
-import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
-var PROJECT_ROOT = import.meta.dirname;
-var LOG_DIR = path.join(PROJECT_ROOT, ".manus-logs");
-var MAX_LOG_SIZE_BYTES = 1 * 1024 * 1024;
-var TRIM_TARGET_BYTES = Math.floor(MAX_LOG_SIZE_BYTES * 0.6);
-function ensureLogDir() {
-  if (!fs.existsSync(LOG_DIR)) {
-    fs.mkdirSync(LOG_DIR, { recursive: true });
-  }
-}
-function trimLogFile(logPath, maxSize) {
-  try {
-    if (!fs.existsSync(logPath) || fs.statSync(logPath).size <= maxSize) {
-      return;
-    }
-    const lines = fs.readFileSync(logPath, "utf-8").split("\n");
-    const keptLines = [];
-    let keptBytes = 0;
-    const targetSize = TRIM_TARGET_BYTES;
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const lineBytes = Buffer.byteLength(`${lines[i]}
-`, "utf-8");
-      if (keptBytes + lineBytes > targetSize) break;
-      keptLines.unshift(lines[i]);
-      keptBytes += lineBytes;
-    }
-    fs.writeFileSync(logPath, keptLines.join("\n"), "utf-8");
-  } catch {
-  }
-}
-function writeToLogFile(source, entries) {
-  if (entries.length === 0) return;
-  ensureLogDir();
-  const logPath = path.join(LOG_DIR, `${source}.log`);
-  const lines = entries.map((entry) => {
-    const ts = (/* @__PURE__ */ new Date()).toISOString();
-    return `[${ts}] ${JSON.stringify(entry)}`;
-  });
-  fs.appendFileSync(logPath, `${lines.join("\n")}
-`, "utf-8");
-  trimLogFile(logPath, MAX_LOG_SIZE_BYTES);
-}
-function vitePluginManusDebugCollector() {
-  return {
-    name: "manus-debug-collector",
-    transformIndexHtml(html) {
-      if (process.env.NODE_ENV === "production") {
-        return html;
-      }
-      return {
-        html,
-        tags: [
-          {
-            tag: "script",
-            attrs: {
-              src: "/__manus__/debug-collector.js",
-              defer: true
-            },
-            injectTo: "head"
-          }
-        ]
-      };
-    },
-    configureServer(server) {
-      server.middlewares.use("/__manus__/logs", (req, res, next) => {
-        if (req.method !== "POST") {
-          return next();
-        }
-        const handlePayload = (payload) => {
-          if (payload.consoleLogs?.length > 0) {
-            writeToLogFile("browserConsole", payload.consoleLogs);
-          }
-          if (payload.networkRequests?.length > 0) {
-            writeToLogFile("networkRequests", payload.networkRequests);
-          }
-          if (payload.sessionEvents?.length > 0) {
-            writeToLogFile("sessionReplay", payload.sessionEvents);
-          }
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ success: true }));
-        };
-        const reqBody = req.body;
-        if (reqBody && typeof reqBody === "object") {
-          try {
-            handlePayload(reqBody);
-          } catch (e) {
-            res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ success: false, error: String(e) }));
-          }
-          return;
-        }
-        let body = "";
-        req.on("data", (chunk) => {
-          body += chunk.toString();
-        });
-        req.on("end", () => {
-          try {
-            const payload = JSON.parse(body);
-            handlePayload(payload);
-          } catch (e) {
-            res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ success: false, error: String(e) }));
-          }
-        });
-      });
-    }
-  };
-}
-var plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector()];
-var vite_config_default = defineConfig({
-  plugins,
-  resolve: {
-    alias: {
-      "@": path.resolve(import.meta.dirname, "client", "src"),
-      "@shared": path.resolve(import.meta.dirname, "shared"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets")
-    }
-  },
-  envDir: path.resolve(import.meta.dirname),
-  root: path.resolve(import.meta.dirname, "client"),
-  publicDir: path.resolve(import.meta.dirname, "client", "public"),
-  build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
-    emptyOutDir: true,
-    // 性能优化配置
-    target: "es2020",
-    minify: "esbuild",
-    rollupOptions: {
-      output: {
-        // 代码分割策略 - 将大依赖从主chunk中分离
-        manualChunks(id2) {
-          if (id2.includes("node_modules")) {
-            if (id2.includes("react-dom")) return "vendor-react-dom";
-            if (id2.includes("/react/")) return "vendor-react";
-            if (id2.includes("gsap")) return "vendor-animation";
-            if (id2.includes("i18next")) return "vendor-i18n";
-            if (id2.includes("@trpc") || id2.includes("superjson")) return "vendor-trpc";
-            if (id2.includes("@radix-ui")) return "vendor-ui";
-            if (id2.includes("@stripe")) return "vendor-stripe";
-            if (id2.includes("lucide-react")) return "vendor-icons";
-            if (id2.includes("sonner")) return "vendor-toast";
-            if (id2.includes("wouter")) return "vendor-router";
-          }
-        },
-        // 资源文件命名
-        chunkFileNames: "assets/js/[name]-[hash].js",
-        entryFileNames: "assets/js/[name]-[hash].js",
-        assetFileNames: "assets/[ext]/[name]-[hash].[ext]"
-      }
-    },
-    // 压缩阈值警告
-    chunkSizeWarningLimit: 500,
-    // 启用 CSS 代码分割
-    cssCodeSplit: true,
-    // 启用源码映射（生产环境可关闭）
-    sourcemap: false
-  },
-  server: {
-    host: true,
-    allowedHosts: [
-      ".manuspre.computer",
-      ".manus.computer",
-      ".manus-asia.computer",
-      ".manuscomputer.ai",
-      ".manusvm.computer",
-      "localhost",
-      "127.0.0.1"
-    ],
-    fs: {
-      strict: true,
-      deny: ["**/.*"]
-    }
-  }
-});
-
-// server/_core/vite.ts
-async function setupVite(app, server) {
-  const serverOptions = {
-    middlewareMode: true,
-    hmr: { server },
-    allowedHosts: true
-  };
-  const vite = await createViteServer({
-    ...vite_config_default,
-    configFile: false,
-    server: serverOptions,
-    appType: "custom"
-  });
-  app.use(vite.middlewares);
-  app.use("*", async (req, res, next) => {
-    const url = req.originalUrl;
-    try {
-      const clientTemplate = path2.resolve(
-        import.meta.dirname,
-        "../..",
-        "client",
-        "index.html"
-      );
-      let template = await fs2.promises.readFile(clientTemplate, "utf-8");
-      template = template.replace(
-        `src="/src/main.tsx"`,
-        `src="/src/main.tsx?v=${nanoid()}"`
-      );
-      const page = await vite.transformIndexHtml(url, template);
-      res.status(200).set({ "Content-Type": "text/html" }).end(page);
-    } catch (e) {
-      vite.ssrFixStacktrace(e);
-      next(e);
-    }
-  });
-}
-function serveStatic(app) {
-  const distPath = process.env.NODE_ENV === "development" ? path2.resolve(import.meta.dirname, "../..", "dist", "public") : path2.resolve(import.meta.dirname, "public");
-  if (!fs2.existsSync(distPath)) {
-    console.error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`
-    );
-  }
-  app.use(express.static(distPath));
-  app.use("*", (_req, res) => {
-    res.sendFile(path2.resolve(distPath, "index.html"));
-  });
-}
-
 // server/stripe/webhook.ts
 import { Router } from "express";
 import { eq as eq9 } from "drizzle-orm";
@@ -2743,7 +2241,7 @@ webhookRouter.post(
       event = stripe.webhooks.constructEvent(
         req.body,
         sig,
-        ENV2.stripeWebhookSecret
+        ENV.stripeWebhookSecret
       );
     } catch (err) {
       console.error("[Webhook] Signature verification failed:", err.message);
@@ -2964,11 +2462,11 @@ function startDailyNotificationCron() {
 }
 
 // server/light/store.ts
-import fs3 from "node:fs";
-import path3 from "node:path";
+import fs from "node:fs";
+import path from "node:path";
 import { createHash as createHash2, randomBytes as randomBytes2 } from "node:crypto";
-var DATA_DIR = process.env.MOYU_DATA_DIR || path3.join(process.cwd(), "data");
-var DATA_FILE = path3.join(DATA_DIR, "moyu-light.json");
+var DATA_DIR = process.env.MOYU_DATA_DIR || path.join(process.cwd(), "data");
+var DATA_FILE = path.join(DATA_DIR, "moyu-light.json");
 var MAX_DRAWS = 5e3;
 var MAX_FEEDBACK = 2e3;
 var INVITE_REWARD_DAYS2 = 3;
@@ -2998,18 +2496,18 @@ function normalize(raw) {
 }
 function loadLocal() {
   try {
-    if (!fs3.existsSync(DATA_FILE)) return empty();
-    const raw = fs3.readFileSync(DATA_FILE, "utf8");
+    if (!fs.existsSync(DATA_FILE)) return empty();
+    const raw = fs.readFileSync(DATA_FILE, "utf8");
     return normalize(JSON.parse(raw));
   } catch {
     return empty();
   }
 }
 function saveLocal(data) {
-  fs3.mkdirSync(DATA_DIR, { recursive: true });
+  fs.mkdirSync(DATA_DIR, { recursive: true });
   const tmp = `${DATA_FILE}.tmp`;
-  fs3.writeFileSync(tmp, JSON.stringify(data), "utf8");
-  fs3.renameSync(tmp, DATA_FILE);
+  fs.writeFileSync(tmp, JSON.stringify(data), "utf8");
+  fs.renameSync(tmp, DATA_FILE);
 }
 function httpUrlFromLibsql(url) {
   if (url.startsWith("libsql://")) {
@@ -3583,7 +3081,7 @@ function registerLightApi(app) {
   });
 }
 
-// server/_core/index.ts
+// server/_core/apiOnlyEntry.ts
 var ALLOWED_ORIGINS2 = new Set(
   (process.env.MOYU_CORS_ORIGINS || "https://chillworks.ai,https://www.chillworks.ai,http://localhost:3000,http://127.0.0.1:3000").split(",").map((s) => s.trim()).filter(Boolean)
 );
@@ -3623,59 +3121,40 @@ async function findAvailablePort(startPort = 3e3) {
   throw new Error(`No available port found starting from ${startPort}`);
 }
 async function startServer() {
-  const app = express2();
+  const app = express();
   const server = createServer(app);
-  const lightOnly = process.env.MOYU_LIGHT_ONLY === "1";
-  const apiOnly = process.env.MOYU_API_ONLY === "1" || !lightOnly && !fs4.existsSync(path4.join(process.cwd(), "dist/public/index.html"));
   app.use(corsMiddleware);
-  if (!lightOnly) {
-    app.use("/api/stripe/webhook", express2.raw({ type: "application/json" }));
-    app.use(webhookRouter);
-  }
-  app.use(express2.json({ limit: lightOnly ? "256kb" : "50mb" }));
-  app.use(express2.urlencoded({ limit: lightOnly ? "256kb" : "50mb", extended: true }));
-  app.get("/health", async (_req, res) => {
+  app.use("/api/stripe/webhook", express.raw({ type: "application/json" }));
+  app.use(webhookRouter);
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.get("/health", (_req, res) => {
     res.json({
       ok: true,
-      service: lightOnly ? "moyu-light" : "moyu-fortune",
-      version: lightOnly ? "sx2b2-1.0" : "path-c-1.0",
-      mode: lightOnly ? "light" : "full"
+      service: "moyu-fortune",
+      version: "path-c-1.0",
+      mode: "api"
     });
   });
   registerLightApi(app);
-  if (lightOnly) {
-    app.get("/", (_req, res) => {
-      res.type("text").send("moyu-light ok \u2014 API at /api/light/* \xB7 frontend https://chillworks.ai");
-    });
-  } else {
-    registerOAuthRoutes(app);
-    app.use(
-      "/api/trpc",
-      createExpressMiddleware({
-        router: appRouter,
-        createContext
-      })
-    );
-    if (process.env.NODE_ENV === "development") {
-      await setupVite(app, server);
-    } else if (!apiOnly) {
-      serveStatic(app);
-    } else {
-      app.get("/", (_req, res) => {
-        res.redirect(302, "https://chillworks.ai");
-      });
-    }
-  }
+  app.use(
+    "/api/trpc",
+    createExpressMiddleware({
+      router: appRouter,
+      createContext
+    })
+  );
+  app.get("/", (_req, res) => {
+    res.redirect(302, "https://chillworks.ai");
+  });
   const preferredPort = parseInt(process.env.PORT || "3000");
   const port = await findAvailablePort(preferredPort);
   if (port !== preferredPort) {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
   }
   server.listen(port, "0.0.0.0", () => {
-    console.log(`Server running on http://0.0.0.0:${port}/`);
-    if (!lightOnly) {
-      startDailyNotificationCron();
-    }
+    console.log(`moyu-fortune API on http://0.0.0.0:${port}/`);
+    startDailyNotificationCron();
   });
 }
 startServer().catch(console.error);
