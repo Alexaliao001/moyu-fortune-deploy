@@ -1401,31 +1401,72 @@ async function activateCheckoutSession(db, session) {
 }
 
 // server/stripe/paymentMethods.ts
-var CNY_METHODS = ["alipay", "wechat_pay"];
-var cached = null;
+var EXPLICIT_METHODS = ["alipay", "wechat_pay", "paypal", "link"];
+var cachedTypes = null;
+var cachedStatus = null;
+async function readPmc() {
+  const stripe2 = getStripe();
+  const { data } = await stripe2.paymentMethodConfigurations.list({ limit: 1 });
+  return data[0];
+}
+function available(cfg, key) {
+  const entry = cfg?.[key];
+  return Boolean(entry?.available);
+}
 async function getCheckoutPaymentMethodTypes(currency) {
-  const types = ["card"];
-  if (currency.toLowerCase() !== "cny") return types;
   const now = Date.now();
-  if (cached && now - cached.at < 5 * 6e4) {
-    return cached.methods;
+  if (cachedTypes && now - cachedTypes.at < 5 * 6e4) {
+    return cachedTypes.methods;
   }
+  const types = ["card"];
+  const cur = currency.toLowerCase();
   try {
-    const stripe2 = getStripe();
-    const { data } = await stripe2.paymentMethodConfigurations.list({ limit: 1 });
-    const cfg = data[0];
-    for (const method of CNY_METHODS) {
-      const entry = cfg?.[method];
-      if (entry?.available) {
-        types.push(method);
-      }
+    const cfg = await readPmc();
+    for (const method of EXPLICIT_METHODS) {
+      if (!available(cfg, method)) continue;
+      if ((method === "alipay" || method === "wechat_pay") && cur !== "cny") continue;
+      if (method === "paypal" && cur === "cny") continue;
+      types.push(method);
     }
   } catch (err) {
-    console.warn("[Stripe] payment method config lookup failed, card+alipay fallback:", err);
-    if (!types.includes("alipay")) types.push("alipay");
+    console.warn("[Stripe] payment method config lookup failed:", err);
+    if (cur === "cny") types.push("alipay");
   }
-  cached = { at: now, methods: types };
+  cachedTypes = { at: now, methods: types };
   return types;
+}
+async function getPaymentMethodsStatus() {
+  const now = Date.now();
+  if (cachedStatus && now - cachedStatus.at < 5 * 6e4) {
+    return cachedStatus.status;
+  }
+  const status = {
+    card: true,
+    alipay: false,
+    wechatPay: false,
+    applePay: false,
+    googlePay: false,
+    paypal: false,
+    link: false
+  };
+  try {
+    const cfg = await readPmc();
+    status.alipay = available(cfg, "alipay");
+    status.wechatPay = available(cfg, "wechat_pay");
+    status.applePay = available(cfg, "apple_pay");
+    status.googlePay = available(cfg, "google_pay");
+    status.paypal = available(cfg, "paypal");
+    status.link = available(cfg, "link");
+    status.card = available(cfg, "card") || true;
+    if (!status.paypal) {
+      status.note = "PayPal via Stripe is only for EU/UK accounts; this US account cannot enable it.";
+    }
+  } catch (err) {
+    console.warn("[Stripe] payment methods status failed:", err);
+    status.alipay = true;
+  }
+  cachedStatus = { at: now, status };
+  return status;
 }
 function checkoutPaymentMethodOptions(types) {
   if (!types.includes("wechat_pay")) return void 0;
@@ -1495,14 +1536,17 @@ var stripeRouter = router({
   }),
   getPaymentMethods: publicProcedure.query(async () => {
     if (!ENV.stripeSecretKey) {
-      return { card: true, alipay: false, wechatPay: false };
+      return {
+        card: true,
+        alipay: false,
+        wechatPay: false,
+        applePay: false,
+        googlePay: false,
+        paypal: false,
+        link: false
+      };
     }
-    const types = await getCheckoutPaymentMethodTypes("cny");
-    return {
-      card: types.includes("card"),
-      alipay: types.includes("alipay"),
-      wechatPay: types.includes("wechat_pay")
-    };
+    return getPaymentMethodsStatus();
   }),
   getSubscriptionStatus: protectedProcedure.query(async ({ ctx }) => {
     const db = await getDb();
