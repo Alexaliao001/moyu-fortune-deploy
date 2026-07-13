@@ -1,10 +1,10 @@
 // Service Worker for MoYu Fortune PWA
-// v4 - CDN图片缓存 + 缓存大小限制 + 过期策略 + 预缓存铜钱图片
+// v6 - navigate network-first (avoid stale index after FE deploy)
 
-const CACHE_NAME = 'moyu-fortune-v5';
-const STATIC_CACHE = 'moyu-fortune-static-v5';
-const DYNAMIC_CACHE = 'moyu-fortune-dynamic-v5';
-const CDN_CACHE = 'moyu-fortune-cdn-v5';
+const CACHE_NAME = 'moyu-fortune-v6';
+const STATIC_CACHE = 'moyu-fortune-static-v6';
+const DYNAMIC_CACHE = 'moyu-fortune-dynamic-v6';
+const CDN_CACHE = 'moyu-fortune-cdn-v6';
 
 // CDN缓存限制
 const CDN_CACHE_MAX_ITEMS = 100;
@@ -49,7 +49,7 @@ const CACHEABLE_PATTERNS = [
 
 // Install event - 预缓存静态资源
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing Service Worker v4');
+  console.log('[SW] Installing Service Worker v6');
   
   event.waitUntil(
     Promise.all([
@@ -87,7 +87,7 @@ self.addEventListener('install', (event) => {
 
 // Activate event - 清理旧缓存
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating Service Worker v4');
+  console.log('[SW] Activating Service Worker v6');
   
   const currentCaches = [STATIC_CACHE, DYNAMIC_CACHE, CDN_CACHE, CACHE_NAME];
   
@@ -128,10 +128,8 @@ function isCacheable(url) {
     return false;
   }
   
-  // 检查是否匹配可缓存模式
-  return CACHEABLE_PATTERNS.some(pattern => pattern.test(urlObj.pathname)) ||
-         urlObj.pathname === '/' ||
-         urlObj.pathname.endsWith('.html');
+  // Assets only — HTML/navigate uses network-first below (P1.5).
+  return CACHEABLE_PATTERNS.some(pattern => pattern.test(urlObj.pathname));
 }
 
 // Fetch event - 智能缓存策略
@@ -197,6 +195,24 @@ self.addEventListener('fetch', (event) => {
             }
           );
         })
+    );
+    return;
+  }
+
+  // 导航 / HTML — 网络优先，失败再回缓存（避免部署后仍吃旧 index）
+  if (request.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname === '/') {
+    event.respondWith(
+      fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.ok) {
+            const clone = networkResponse.clone();
+            caches.open(DYNAMIC_CACHE).then((cache) => cache.put(request, clone));
+          }
+          return networkResponse;
+        })
+        .catch(() =>
+          caches.match(request).then((cached) => cached || caches.match('/') || caches.match('/index.html'))
+        )
     );
     return;
   }
@@ -337,4 +353,4 @@ async function trimCache(cacheName, maxItems) {
   }
 }
 
-console.log('[SW] Service Worker v4 loaded');
+console.log('[SW] Service Worker v6 loaded');
