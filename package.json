@@ -1,13 +1,22 @@
 {
-  "name": "moyu-light-host",
+  "name": "moyu-fortune-api",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "echo prebuilt",
-    "start": "NODE_ENV=production node dist/light.js"
+    "start": "NODE_ENV=production MOYU_API_ONLY=1 node dist/index.js"
   },
   "dependencies": {
-    "express": "^4.21.2"
+    "@trpc/server": "^11.6.0",
+    "cookie": "^1.0.2",
+    "dotenv": "^17.2.2",
+    "drizzle-orm": "^0.44.5",
+    "express": "^4.21.2",
+    "jose": "6.1.0",
+    "postgres": "^3.4.9",
+    "stripe": "^20.2.0",
+    "superjson": "^1.13.3",
+    "zod": "^4.1.12"
   },
   "engines": {
     "node": ">=20"

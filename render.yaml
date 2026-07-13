@@ -12,5 +12,22 @@ services:
         value: production
       - key: HOST
         value: "0.0.0.0"
+      - key: MOYU_API_ONLY
+        value: "1"
+      - key: VITE_APP_ID
+        value: moyu-fortune
       - key: MOYU_CORS_ORIGINS
         value: "https://chillworks.ai,https://www.chillworks.ai,http://localhost:3000"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: moyu-fortune-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+
+databases:
+  - name: moyu-fortune-db
+    plan: free
+    region: oregon
+    databaseName: moyu_fortune
+    user: moyu_fortune_user
