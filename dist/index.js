@@ -2257,6 +2257,33 @@ var leaderboardRouter = router({
       todayDraws: Number(row.todayDraws || 0),
       avgPercent: Number(row.avgPercent || 0)
     };
+  }),
+  /**
+   * Real "beat X%" vs today's draws (P1-1).
+   * Returns null when sample size is too small — never invent percentages.
+   */
+  beatPercent: publicProcedure.input(z8.object({ percent: z8.number().min(0).max(100) })).query(async ({ input }) => {
+    const MIN_SAMPLE = 20;
+    const db = await getDb();
+    if (!db) return { beatPercent: null, sampleSize: 0 };
+    const result = await db.execute(sql3`
+        SELECT
+          COUNT(*)::int AS "sampleSize",
+          COUNT(*) FILTER (WHERE percent < ${input.percent})::int AS "below"
+        FROM fortune_history
+        WHERE ("createdAt")::date = CURRENT_DATE
+      `);
+    const row = asRows(result)[0] || {};
+    const sampleSize = Number(row.sampleSize || 0);
+    if (sampleSize < MIN_SAMPLE) {
+      return { beatPercent: null, sampleSize };
+    }
+    const below = Number(row.below || 0);
+    const beatPercent = Math.max(
+      0,
+      Math.min(99, Math.round(below / sampleSize * 100))
+    );
+    return { beatPercent, sampleSize };
   })
 });
 
