@@ -400,6 +400,7 @@ var systemRouter = router({
       version: "path-c-1.0",
       database: Boolean(db),
       stripe: Boolean(ENV.stripeSecretKey),
+      stripeWebhook: Boolean(ENV.stripeWebhookSecret),
       llm: Boolean(ENV.forgeApiKey)
     };
   }),
@@ -1346,6 +1347,13 @@ async function activateCheckoutSession(db, session) {
   }
   const paymentIntentId = String(session.payment_intent || "");
   const customerId = session.customer ? String(session.customer) : "";
+  if (paymentIntentId) {
+    const dup = await db.select({ id: purchases.id }).from(purchases).where(eq3(purchases.stripePaymentIntentId, paymentIntentId)).limit(1);
+    if (dup.length > 0) {
+      const plan2 = getMembershipPlan(productKey);
+      return { ok: true, plan: plan2, alreadyProcessed: true };
+    }
+  }
   await db.insert(purchases).values({
     userId,
     stripePaymentIntentId: paymentIntentId || null,
@@ -1392,6 +1400,38 @@ async function activateCheckoutSession(db, session) {
   return { ok: true, plan };
 }
 
+// server/stripe/paymentMethods.ts
+var CNY_METHODS = ["alipay", "wechat_pay"];
+var cached = null;
+async function getCheckoutPaymentMethodTypes(currency) {
+  const types = ["card"];
+  if (currency.toLowerCase() !== "cny") return types;
+  const now = Date.now();
+  if (cached && now - cached.at < 5 * 6e4) {
+    return cached.methods;
+  }
+  try {
+    const stripe2 = getStripe();
+    const { data } = await stripe2.paymentMethodConfigurations.list({ limit: 1 });
+    const cfg = data[0];
+    for (const method of CNY_METHODS) {
+      const entry = cfg?.[method];
+      if (entry?.available) {
+        types.push(method);
+      }
+    }
+  } catch (err) {
+    console.warn("[Stripe] payment method config lookup failed, card+alipay fallback:", err);
+    if (!types.includes("alipay")) types.push("alipay");
+  }
+  cached = { at: now, methods: types };
+  return types;
+}
+function checkoutPaymentMethodOptions(types) {
+  if (!types.includes("wechat_pay")) return void 0;
+  return { wechat_pay: { client: "web" } };
+}
+
 // server/stripe/router.ts
 function checkoutOrigin(req) {
   return req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : "https://chillworks.ai");
@@ -1418,10 +1458,7 @@ var stripeRouter = router({
     const user = ctx.user;
     const origin = checkoutOrigin(ctx.req);
     const stripe2 = getStripe();
-    const paymentMethodTypes = ["card"];
-    if (product.currency === "cny") {
-      paymentMethodTypes.push("alipay");
-    }
+    const paymentMethodTypes = await getCheckoutPaymentMethodTypes(product.currency);
     const session = await stripe2.checkout.sessions.create({
       mode: "payment",
       payment_method_types: paymentMethodTypes,
@@ -1448,11 +1485,23 @@ var stripeRouter = router({
         customer_name: user.name || "",
         product_key: input.productKey
       },
-      allow_promotion_codes: true
+      allow_promotion_codes: true,
+      payment_method_options: checkoutPaymentMethodOptions(paymentMethodTypes)
     });
     return {
       checkoutUrl: session.url,
       sessionId: session.id
+    };
+  }),
+  getPaymentMethods: publicProcedure.query(async () => {
+    if (!ENV.stripeSecretKey) {
+      return { card: true, alipay: false, wechatPay: false };
+    }
+    const types = await getCheckoutPaymentMethodTypes("cny");
+    return {
+      card: types.includes("card"),
+      alipay: types.includes("alipay"),
+      wechatPay: types.includes("wechat_pay")
     };
   }),
   getSubscriptionStatus: protectedProcedure.query(async ({ ctx }) => {
@@ -2211,47 +2260,28 @@ async function createContext(opts) {
 import { Router } from "express";
 import { eq as eq9 } from "drizzle-orm";
 var webhookRouter = Router();
-function getMembershipDuration2(productKey) {
-  const product = PRODUCTS[productKey];
-  if (product && "durationDays" in product) {
-    return product.durationDays;
-  }
-  return 0;
-}
-function getMembershipPlan2(productKey) {
-  switch (productKey) {
-    case "MONTHLY_MEMBERSHIP":
-      return "monthly";
-    case "QUARTERLY_MEMBERSHIP":
-      return "quarterly";
-    case "ANNUAL_MEMBERSHIP":
-      return "annual";
-    case "LIFETIME_MEMBERSHIP":
-      return "lifetime";
-    default:
-      return null;
-  }
-}
 webhookRouter.post(
   "/api/stripe/webhook",
   async (req, res) => {
+    if (!ENV.stripeWebhookSecret) {
+      console.error("[Webhook] STRIPE_WEBHOOK_SECRET not configured");
+      return res.status(503).send("Webhook secret not configured");
+    }
     const sig = req.headers["stripe-signature"];
     let event;
     try {
-      event = stripe.webhooks.constructEvent(
+      event = getStripe().webhooks.constructEvent(
         req.body,
         sig,
         ENV.stripeWebhookSecret
       );
     } catch (err) {
-      console.error("[Webhook] Signature verification failed:", err.message);
-      return res.status(400).send(`Webhook Error: ${err.message}`);
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[Webhook] Signature verification failed:", message);
+      return res.status(400).send(`Webhook Error: ${message}`);
     }
     if (event.id.startsWith("evt_test_")) {
-      console.log("[Webhook] Test event detected, returning verification response");
-      return res.json({
-        verified: true
-      });
+      return res.json({ verified: true });
     }
     console.log(`[Webhook] Received event: ${event.type} (${event.id})`);
     const db = await getDb();
@@ -2263,91 +2293,10 @@ webhookRouter.post(
       switch (event.type) {
         case "checkout.session.completed": {
           const session = event.data.object;
-          const userId = parseInt(session.metadata?.user_id || "0");
-          const productKey = session.metadata?.product_key || "";
-          if (!userId) {
-            console.error("[Webhook] No user_id in metadata");
-            break;
-          }
-          if (session.mode === "payment") {
-            const paymentIntentId = session.payment_intent;
-            const customerId = session.customer;
-            await db.insert(purchases).values({
-              userId,
-              stripePaymentIntentId: paymentIntentId,
-              productType: productKey || "detailed_report",
-              status: "completed"
-            });
-            const plan = getMembershipPlan2(productKey);
-            if (plan) {
-              const durationDays = getMembershipDuration2(productKey);
-              const existingSub = await db.select().from(subscriptions).where(eq9(subscriptions.userId, userId)).limit(1);
-              let periodEnd;
-              if (durationDays === -1) {
-                periodEnd = /* @__PURE__ */ new Date();
-                periodEnd.setFullYear(periodEnd.getFullYear() + 100);
-              } else {
-                const now = /* @__PURE__ */ new Date();
-                let startDate = now;
-                if (existingSub.length > 0 && existingSub[0].status === "active" && existingSub[0].currentPeriodEnd && new Date(existingSub[0].currentPeriodEnd) > now) {
-                  startDate = new Date(existingSub[0].currentPeriodEnd);
-                }
-                periodEnd = new Date(startDate);
-                periodEnd.setDate(periodEnd.getDate() + durationDays);
-              }
-              if (existingSub.length > 0) {
-                await db.update(subscriptions).set({
-                  stripeCustomerId: customerId || void 0,
-                  status: "active",
-                  plan,
-                  currentPeriodEnd: periodEnd
-                }).where(eq9(subscriptions.userId, userId));
-              } else {
-                await db.insert(subscriptions).values({
-                  userId,
-                  stripeCustomerId: customerId || null,
-                  stripeSubscriptionId: null,
-                  status: "active",
-                  plan,
-                  currentPeriodEnd: periodEnd
-                });
-              }
-              console.log(`[Webhook] ${plan} membership activated for user ${userId}, expires: ${periodEnd.toISOString()}`);
-            } else {
-              console.log(`[Webhook] Purchase recorded for user ${userId}: ${productKey}`);
-            }
-          } else if (session.mode === "subscription") {
-            const subscriptionId = session.subscription;
-            const customerId = session.customer;
-            const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
-            let plan = "monthly";
-            if (productKey === "QUARTERLY_MEMBERSHIP") {
-              plan = "quarterly";
-            } else if (productKey === "ANNUAL_MEMBERSHIP") {
-              plan = "annual";
-            }
-            const existingSub = await db.select().from(subscriptions).where(eq9(subscriptions.userId, userId)).limit(1);
-            const periodEnd = stripeSubscription.current_period_end ? new Date(stripeSubscription.current_period_end * 1e3) : /* @__PURE__ */ new Date();
-            if (existingSub.length > 0) {
-              await db.update(subscriptions).set({
-                stripeCustomerId: customerId,
-                stripeSubscriptionId: subscriptionId,
-                status: "active",
-                plan,
-                currentPeriodEnd: periodEnd
-              }).where(eq9(subscriptions.userId, userId));
-            } else {
-              await db.insert(subscriptions).values({
-                userId,
-                stripeCustomerId: customerId,
-                stripeSubscriptionId: subscriptionId,
-                status: "active",
-                plan,
-                currentPeriodEnd: periodEnd
-              });
-            }
-            console.log(`[Webhook] Subscription created for user ${userId}`);
-          }
+          const result = await activateCheckoutSession(db, session);
+          console.log(
+            `[Webhook] checkout.session.completed user=${session.metadata?.user_id} ok=${result.ok} plan=${result.plan ?? "none"}`
+          );
           break;
         }
         case "customer.subscription.updated": {
@@ -2356,28 +2305,21 @@ webhookRouter.post(
           const status = subscription.status;
           const periodEnd = subscription.current_period_end ? new Date(subscription.current_period_end * 1e3) : /* @__PURE__ */ new Date();
           let dbStatus = "active";
-          if (status === "canceled") {
-            dbStatus = "canceled";
-          } else if (status === "past_due") {
-            dbStatus = "past_due";
-          }
-          await db.update(subscriptions).set({
-            status: dbStatus,
-            currentPeriodEnd: periodEnd
-          }).where(eq9(subscriptions.stripeSubscriptionId, subscriptionId));
+          if (status === "canceled") dbStatus = "canceled";
+          else if (status === "past_due") dbStatus = "past_due";
+          await db.update(subscriptions).set({ status: dbStatus, currentPeriodEnd: periodEnd }).where(eq9(subscriptions.stripeSubscriptionId, subscriptionId));
           console.log(`[Webhook] Subscription ${subscriptionId} updated to ${status}`);
           break;
         }
         case "customer.subscription.deleted": {
           const subscription = event.data.object;
-          const subscriptionId = subscription.id;
-          await db.update(subscriptions).set({ status: "canceled" }).where(eq9(subscriptions.stripeSubscriptionId, subscriptionId));
-          console.log(`[Webhook] Subscription ${subscriptionId} canceled`);
+          await db.update(subscriptions).set({ status: "canceled" }).where(eq9(subscriptions.stripeSubscriptionId, subscription.id));
+          console.log(`[Webhook] Subscription ${subscription.id} canceled`);
           break;
         }
         case "invoice.payment_failed": {
           const invoice = event.data.object;
-          const subscriptionId = invoice.subscription;
+          const subscriptionId = typeof invoice.subscription === "string" ? invoice.subscription : null;
           if (subscriptionId) {
             await db.update(subscriptions).set({ status: "past_due" }).where(eq9(subscriptions.stripeSubscriptionId, subscriptionId));
             console.log(`[Webhook] Subscription ${subscriptionId} payment failed`);
@@ -3085,6 +3027,7 @@ function registerLightApi(app) {
 function renderApiStatusPage() {
   const db = Boolean(ENV.databaseUrl);
   const stripe2 = Boolean(ENV.stripeSecretKey);
+  const webhook = Boolean(ENV.stripeWebhookSecret);
   const llm = Boolean(ENV.forgeApiKey);
   const pill = (on, label) => `<span class="pill ${on ? "on" : "off"}">${on ? "\u25CF" : "\u25CB"} ${label}</span>`;
   return `<!doctype html>
@@ -3126,6 +3069,7 @@ a{color:var(--gold);text-decoration:none}a:hover{text-decoration:underline}
     <div class="pills">
       ${pill(db, "Postgres")}
       ${pill(stripe2, "Stripe")}
+      ${pill(webhook, "Webhook")}
       ${pill(llm, "LLM")}
     </div>
     <ul>
