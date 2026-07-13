@@ -1,0 +1,1 @@
+import{b as t,g as a,a as o}from"./localStorage-MCryKqAE.js";import{r as e}from"./vendor-react-D-uo5g8g.js";function l(u){const r=e.useMemo(()=>({id:o(),name:a(),avatar:t(),role:"user"}),[]),s=e.useCallback(async()=>({success:!0}),[]);return{...e.useMemo(()=>({user:r,loading:!1,error:null,isAuthenticated:!0}),[r]),refresh:()=>Promise.resolve(),logout:s}}export{l as u};
