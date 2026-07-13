@@ -74,17 +74,8 @@ var validatePayload = (input) => {
 };
 async function notifyOwner(payload) {
   const { title, content } = validatePayload(payload);
-  if (!ENV.forgeApiUrl) {
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: "Notification service URL is not configured."
-    });
-  }
-  if (!ENV.forgeApiKey) {
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: "Notification service API key is not configured."
-    });
+  if (!ENV.forgeApiUrl || !ENV.forgeApiKey) {
+    return false;
   }
   const endpoint = buildEndpointUrl(ENV.forgeApiUrl);
   try {
@@ -390,7 +381,7 @@ async function getUserById(id2) {
 var systemRouter = router({
   health: publicProcedure.input(
     z.object({
-      timestamp: z.number().min(0, "timestamp cannot be negative")
+      timestamp: z.number().min(0).optional()
     }).optional()
   ).query(async () => {
     const db = await getDb();
@@ -1711,10 +1702,12 @@ var memberRouter = router({
     const isVip = userSubscription.length > 0;
     if (!isVip) {
       const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-      const todayCount = await db.select().from(dailyDrawCount).where(and(
-        eq5(dailyDrawCount.userId, ctx.user.id),
-        eq5(dailyDrawCount.drawDate, today)
-      )).limit(1);
+      const todayCount = await db.select().from(dailyDrawCount).where(
+        and(
+          eq5(dailyDrawCount.userId, ctx.user.id),
+          eq5(dailyDrawCount.drawDate, today)
+        )
+      ).limit(1);
       if (todayCount.length > 0) {
         if (todayCount[0].count >= DAILY_DRAW_LIMIT) {
           throw new TRPCError5({
@@ -1726,7 +1719,7 @@ var memberRouter = router({
       } else {
         await db.insert(dailyDrawCount).values({
           userId: ctx.user.id,
-          drawDate: new Date(today),
+          drawDate: today,
           count: 1
         });
       }
@@ -1933,10 +1926,14 @@ var feedbackRouter = router({
       contact: input.contact || null,
       userAgent: input.userAgent || null
     });
-    await notifyOwner({
-      title: `MoYu feedback: ${input.type}`,
-      content: input.content.slice(0, 500)
-    });
+    try {
+      await notifyOwner({
+        title: `MoYu feedback: ${input.type}`,
+        content: input.content.slice(0, 500)
+      });
+    } catch (err) {
+      console.warn("[feedback] notifyOwner skipped:", err);
+    }
     return { success: true };
   }),
   list: adminProcedure.input(
@@ -2058,8 +2055,13 @@ function getWeekRange() {
   end.setHours(23, 59, 59, 999);
   return { start, end };
 }
+function asRows(result) {
+  if (Array.isArray(result)) return result;
+  const nested = result?.rows;
+  if (Array.isArray(nested)) return nested;
+  return [];
+}
 var leaderboardRouter = router({
-  // 连续签到天数排行榜
   streakRanking: publicProcedure.input(
     z8.object({
       limit: z8.number().min(1).max(50).default(20)
@@ -2072,62 +2074,56 @@ var leaderboardRouter = router({
     const limit = input?.limit ?? 20;
     const result = await db.execute(sql3`
         WITH user_dates AS (
-          SELECT 
-            userId,
-            DATE(createdAt) as draw_date
+          SELECT
+            "userId" AS user_id,
+            ("createdAt")::date AS draw_date
           FROM fortune_history
-          GROUP BY userId, DATE(createdAt)
+          GROUP BY "userId", ("createdAt")::date
         ),
-        user_streaks AS (
-          SELECT 
-            userId,
+        numbered AS (
+          SELECT
+            user_id,
             draw_date,
-            DATE_SUB(draw_date, INTERVAL ROW_NUMBER() OVER (PARTITION BY userId ORDER BY draw_date) DAY) as streak_group
+            draw_date - (ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY draw_date))::int AS streak_group
           FROM user_dates
         ),
         streak_counts AS (
-          SELECT 
-            userId,
+          SELECT
+            user_id,
             streak_group,
-            COUNT(*) as streak_length,
-            MAX(draw_date) as last_date
-          FROM user_streaks
-          GROUP BY userId, streak_group
+            COUNT(*)::int AS streak_length,
+            MAX(draw_date) AS last_date
+          FROM numbered
+          GROUP BY user_id, streak_group
         ),
         current_streaks AS (
-          SELECT 
-            sc.userId,
+          SELECT DISTINCT ON (sc.user_id)
+            sc.user_id,
             sc.streak_length,
             sc.last_date
           FROM streak_counts sc
-          WHERE sc.last_date >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)
-          AND sc.streak_length = (
-            SELECT MAX(sc2.streak_length) 
-            FROM streak_counts sc2 
-            WHERE sc2.userId = sc.userId 
-            AND sc2.last_date >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)
-          )
+          WHERE sc.last_date >= CURRENT_DATE - INTERVAL '1 day'
+          ORDER BY sc.user_id, sc.streak_length DESC, sc.last_date DESC
         )
-        SELECT 
-          cs.userId,
+        SELECT
+          cs.user_id AS "userId",
           u.name,
-          cs.streak_length as streak,
-          cs.last_date as lastActive
+          cs.streak_length AS streak,
+          cs.last_date AS "lastActive"
         FROM current_streaks cs
-        JOIN users u ON cs.userId = u.id
+        JOIN users u ON cs.user_id = u.id
         ORDER BY cs.streak_length DESC, cs.last_date DESC
         LIMIT ${limit}
       `);
-    const rankings = result[0]?.map((row, index) => ({
+    const rankings = asRows(result).map((row, index) => ({
       rank: index + 1,
-      userId: row.userId,
+      userId: Number(row.userId),
       name: row.name || "\u6478\u9C7C\u8FBE\u4EBA",
       streak: Number(row.streak),
       lastActive: row.lastActive
-    })) || [];
+    }));
     return { rankings };
   }),
-  // 本周最佳运势排行榜
   weeklyBestRanking: publicProcedure.input(
     z8.object({
       limit: z8.number().min(1).max(50).default(20)
@@ -2139,15 +2135,17 @@ var leaderboardRouter = router({
     }
     const limit = input?.limit ?? 20;
     const { start, end } = getWeekRange();
+    const startIso = start.toISOString();
+    const endIso = end.toISOString();
     const result = await db.execute(sql3`
         WITH weekly_fortune AS (
-          SELECT 
-            fh.userId,
+          SELECT
+            fh."userId" AS user_id,
             u.name,
             fh.level,
             fh.percent,
             fh.emoji,
-            fh.createdAt,
+            fh."createdAt",
             CASE fh.level
               WHEN '大吉' THEN 5
               WHEN '中吉' THEN 4
@@ -2155,50 +2153,69 @@ var leaderboardRouter = router({
               WHEN '末吉' THEN 2
               WHEN '凶' THEN 1
               ELSE 0
-            END as level_weight
+            END AS level_weight
           FROM fortune_history fh
-          JOIN users u ON fh.userId = u.id
-          WHERE fh.createdAt >= ${start}
-            AND fh.createdAt <= ${end}
+          JOIN users u ON fh."userId" = u.id
+          WHERE fh."createdAt" >= ${startIso}::timestamptz
+            AND fh."createdAt" <= ${endIso}::timestamptz
         ),
         user_best AS (
-          SELECT 
-            userId,
+          SELECT
+            user_id,
             name,
-            MAX(level_weight) as best_level_weight,
-            AVG(percent) as avg_percent,
-            COUNT(*) as total_draws,
-            MAX(percent) as best_percent
+            MAX(level_weight) AS best_level_weight,
+            AVG(percent) AS avg_percent,
+            COUNT(*)::int AS total_draws,
+            MAX(percent) AS best_percent
           FROM weekly_fortune
-          GROUP BY userId, name
+          GROUP BY user_id, name
         ),
         user_best_detail AS (
-          SELECT 
-            ub.userId,
+          SELECT
+            ub.user_id,
             ub.name,
             ub.best_level_weight,
             ub.avg_percent,
             ub.total_draws,
             ub.best_percent,
-            (SELECT wf.level FROM weekly_fortune wf WHERE wf.userId = ub.userId AND wf.level_weight = ub.best_level_weight LIMIT 1) as best_level,
-            (SELECT wf.emoji FROM weekly_fortune wf WHERE wf.userId = ub.userId AND wf.level_weight = ub.best_level_weight LIMIT 1) as best_emoji
+            (
+              SELECT wf.level
+              FROM weekly_fortune wf
+              WHERE wf.user_id = ub.user_id AND wf.level_weight = ub.best_level_weight
+              ORDER BY wf.percent DESC
+              LIMIT 1
+            ) AS best_level,
+            (
+              SELECT wf.emoji
+              FROM weekly_fortune wf
+              WHERE wf.user_id = ub.user_id AND wf.level_weight = ub.best_level_weight
+              ORDER BY wf.percent DESC
+              LIMIT 1
+            ) AS best_emoji
           FROM user_best ub
         )
-        SELECT *
+        SELECT
+          user_id AS "userId",
+          name,
+          best_level,
+          best_emoji,
+          best_percent,
+          avg_percent,
+          total_draws
         FROM user_best_detail
         ORDER BY best_level_weight DESC, best_percent DESC, total_draws DESC
         LIMIT ${limit}
       `);
-    const rankings = result[0]?.map((row, index) => ({
+    const rankings = asRows(result).map((row, index) => ({
       rank: index + 1,
-      userId: row.userId,
+      userId: Number(row.userId),
       name: row.name || "\u6478\u9C7C\u8FBE\u4EBA",
       bestLevel: row.best_level,
       bestEmoji: row.best_emoji,
       bestPercent: Number(row.best_percent),
       avgPercent: Math.round(Number(row.avg_percent)),
       totalDraws: Number(row.total_draws)
-    })) || [];
+    }));
     return {
       rankings,
       weekRange: {
@@ -2207,7 +2224,6 @@ var leaderboardRouter = router({
       }
     };
   }),
-  // 获取我的排名信息
   myRanking: protectedProcedure.query(async ({ ctx }) => {
     const db = await getDb();
     if (!db) {
@@ -2215,26 +2231,23 @@ var leaderboardRouter = router({
     }
     const streakResult = await db.execute(sql3`
       WITH my_dates AS (
-        SELECT DATE(createdAt) as draw_date
+        SELECT ("createdAt")::date AS draw_date
         FROM fortune_history
-        WHERE userId = ${ctx.user.id}
-        GROUP BY DATE(createdAt)
-        ORDER BY draw_date DESC
+        WHERE "userId" = ${ctx.user.id}
+        GROUP BY ("createdAt")::date
       ),
-      my_streaks AS (
-        SELECT 
+      numbered AS (
+        SELECT
           draw_date,
-          DATE_SUB(draw_date, INTERVAL ROW_NUMBER() OVER (ORDER BY draw_date DESC) DAY) as streak_group
+          draw_date - (ROW_NUMBER() OVER (ORDER BY draw_date DESC))::int AS streak_group
         FROM my_dates
       )
-      SELECT COUNT(*) as streak
-      FROM my_streaks
-      WHERE streak_group = (
-        SELECT streak_group FROM my_streaks LIMIT 1
-      )
-      AND draw_date >= DATE_SUB(CURDATE(), INTERVAL 365 DAY)
+      SELECT COUNT(*)::int AS streak
+      FROM numbered
+      WHERE streak_group = (SELECT streak_group FROM numbered ORDER BY draw_date DESC LIMIT 1)
+        AND draw_date >= CURRENT_DATE - INTERVAL '365 days'
     `);
-    const streak = Number(streakResult[0]?.[0]?.streak || 0);
+    const streak = Number(asRows(streakResult)[0]?.streak || 0);
     const { start, end } = getWeekRange();
     const weeklyBest = await db.select({
       level: fortuneHistory.level,
@@ -2251,29 +2264,31 @@ var leaderboardRouter = router({
     return {
       streak,
       weeklyBest: weeklyBest[0] || null,
-      totalDraws: totalResult[0]?.count || 0
+      totalDraws: Number(totalResult[0]?.count || 0)
     };
   }),
-  // 全站统计
   globalStats: publicProcedure.query(async () => {
     const db = await getDb();
     if (!db) {
       return { totalUsers: 0, totalDraws: 0, todayDraws: 0, avgPercent: 0 };
     }
-    const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
     const stats = await db.execute(sql3`
-      SELECT 
-        (SELECT COUNT(DISTINCT id) FROM users) as totalUsers,
-        (SELECT COUNT(*) FROM fortune_history) as totalDraws,
-        (SELECT COUNT(*) FROM fortune_history WHERE DATE(createdAt) = ${today}) as todayDraws,
-        (SELECT ROUND(AVG(percent)) FROM fortune_history) as avgPercent
+      SELECT
+        (SELECT COUNT(DISTINCT id)::int FROM users) AS "totalUsers",
+        (SELECT COUNT(*)::int FROM fortune_history) AS "totalDraws",
+        (
+          SELECT COUNT(*)::int
+          FROM fortune_history
+          WHERE ("createdAt")::date = CURRENT_DATE
+        ) AS "todayDraws",
+        (SELECT COALESCE(ROUND(AVG(percent)), 0)::int FROM fortune_history) AS "avgPercent"
     `);
-    const row = stats[0]?.[0];
+    const row = asRows(stats)[0] || {};
     return {
-      totalUsers: Number(row?.totalUsers || 0),
-      totalDraws: Number(row?.totalDraws || 0),
-      todayDraws: Number(row?.todayDraws || 0),
-      avgPercent: Number(row?.avgPercent || 0)
+      totalUsers: Number(row.totalUsers || 0),
+      totalDraws: Number(row.totalDraws || 0),
+      todayDraws: Number(row.todayDraws || 0),
+      avgPercent: Number(row.avgPercent || 0)
     };
   })
 });
