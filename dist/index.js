@@ -1,147 +1,44 @@
 var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// server/_core/apiOnlyEntry.ts
-import "dotenv/config";
-import express from "express";
-import { createServer } from "http";
-import net from "net";
-import { createExpressMiddleware } from "@trpc/server/adapters/express";
-
-// server/_core/systemRouter.ts
-import { z } from "zod";
-
-// server/_core/notification.ts
-import { TRPCError } from "@trpc/server";
-
 // server/_core/env.ts
-var ENV = {
-  appId: process.env.VITE_APP_ID ?? "",
-  cookieSecret: process.env.JWT_SECRET ?? "",
-  databaseUrl: process.env.DATABASE_URL ?? "",
-  oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
-  ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
-  isProduction: process.env.NODE_ENV === "production",
-  forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
-  forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
-  stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",
-  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? ""
-};
-
-// server/_core/notification.ts
-var TITLE_MAX_LENGTH = 1200;
-var CONTENT_MAX_LENGTH = 2e4;
-var trimValue = (value) => value.trim();
-var isNonEmptyString = (value) => typeof value === "string" && value.trim().length > 0;
-var buildEndpointUrl = (baseUrl) => {
-  const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-  return new URL(
-    "webdevtoken.v1.WebDevService/SendNotification",
-    normalizedBase
-  ).toString();
-};
-var validatePayload = (input) => {
-  if (!isNonEmptyString(input.title)) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "Notification title is required."
-    });
+var ENV;
+var init_env = __esm({
+  "server/_core/env.ts"() {
+    "use strict";
+    ENV = {
+      appId: process.env.VITE_APP_ID ?? "",
+      cookieSecret: process.env.JWT_SECRET ?? "",
+      databaseUrl: process.env.DATABASE_URL ?? "",
+      oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
+      ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
+      isProduction: process.env.NODE_ENV === "production",
+      forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
+      forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+      stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",
+      stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? ""
+    };
   }
-  if (!isNonEmptyString(input.content)) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "Notification content is required."
-    });
-  }
-  const title = trimValue(input.title);
-  const content = trimValue(input.content);
-  if (title.length > TITLE_MAX_LENGTH) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: `Notification title must be at most ${TITLE_MAX_LENGTH} characters.`
-    });
-  }
-  if (content.length > CONTENT_MAX_LENGTH) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: `Notification content must be at most ${CONTENT_MAX_LENGTH} characters.`
-    });
-  }
-  return { title, content };
-};
-async function notifyOwner(payload) {
-  const { title, content } = validatePayload(payload);
-  if (!ENV.forgeApiUrl || !ENV.forgeApiKey) {
-    return false;
-  }
-  const endpoint = buildEndpointUrl(ENV.forgeApiUrl);
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        authorization: `Bearer ${ENV.forgeApiKey}`,
-        "content-type": "application/json",
-        "connect-protocol-version": "1"
-      },
-      body: JSON.stringify({ title, content })
-    });
-    if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      console.warn(
-        `[Notification] Failed to notify owner (${response.status} ${response.statusText})${detail ? `: ${detail}` : ""}`
-      );
-      return false;
-    }
-    return true;
-  } catch (error) {
-    console.warn("[Notification] Error calling notification service:", error);
-    return false;
-  }
-}
-
-// server/_core/trpc.ts
-import { TRPCError as TRPCError2 } from "@trpc/server";
-import { initTRPC } from "@trpc/server";
-import superjson from "superjson";
+});
 
 // shared/const.ts
-var COOKIE_NAME = "app_session_id";
-var ONE_YEAR_MS = 1e3 * 60 * 60 * 24 * 365;
-var UNAUTHED_ERR_MSG = "Please login (10001)";
-var NOT_ADMIN_ERR_MSG = "You do not have required permission (10002)";
-
-// server/_core/trpc.ts
-var t = initTRPC.context().create({
-  transformer: superjson
-});
-var router = t.router;
-var publicProcedure = t.procedure;
-var protectedProcedure = t.procedure.use(({ ctx, next }) => {
-  if (!ctx.user) {
-    throw new TRPCError2({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+var COOKIE_NAME, ONE_YEAR_MS, UNAUTHED_ERR_MSG, NOT_ADMIN_ERR_MSG;
+var init_const = __esm({
+  "shared/const.ts"() {
+    "use strict";
+    COOKIE_NAME = "app_session_id";
+    ONE_YEAR_MS = 1e3 * 60 * 60 * 24 * 365;
+    UNAUTHED_ERR_MSG = "Please login (10001)";
+    NOT_ADMIN_ERR_MSG = "You do not have required permission (10002)";
   }
-  return next({
-    ctx: {
-      ...ctx,
-      user: ctx.user
-    }
-  });
 });
-var adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (ctx.user.role !== "admin") {
-    throw new TRPCError2({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
-  }
-  return next({ ctx });
-});
-
-// server/db.ts
-import { drizzle } from "drizzle-orm/postgres-js";
-import { eq } from "drizzle-orm";
-import postgres from "postgres";
 
 // drizzle/schema.ts
 var schema_exports = {};
@@ -173,129 +70,136 @@ import {
   timestamp,
   varchar
 } from "drizzle-orm/pg-core";
-var userRoleEnum = pgEnum("user_role", ["user", "admin"]);
-var subscriptionStatusEnum = pgEnum("subscription_status", [
-  "active",
-  "canceled",
-  "past_due",
-  "trialing",
-  "incomplete"
-]);
-var subscriptionPlanEnum = pgEnum("subscription_plan", [
-  "monthly",
-  "quarterly",
-  "annual",
-  "lifetime"
-]);
-var purchaseStatusEnum = pgEnum("purchase_status", [
-  "pending",
-  "completed",
-  "failed"
-]);
-var feedbackTypeEnum = pgEnum("feedback_type", [
-  "bug",
-  "feature",
-  "suggestion",
-  "other"
-]);
-var feedbackStatusEnum = pgEnum("feedback_status", [
-  "pending",
-  "reviewed",
-  "resolved",
-  "closed"
-]);
-var notificationTypeEnum = pgEnum("notification_type", [
-  "feedback_reply",
-  "system",
-  "reward"
-]);
-var users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  openId: varchar("openId", { length: 64 }).notNull().unique(),
-  name: text("name"),
-  email: varchar("email", { length: 320 }),
-  /** scrypt hash for optional email/password login; null for guest-only */
-  passwordHash: text("passwordHash"),
-  loginMethod: varchar("loginMethod", { length: 64 }),
-  role: userRoleEnum("role").default("user").notNull(),
-  inviteCode: varchar("inviteCode", { length: 16 }).unique(),
-  invitedBy: integer("invitedBy"),
-  unlockedAvatars: text("unlockedAvatars"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-  lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull()
-});
-var subscriptions = pgTable("subscriptions", {
-  id: serial("id").primaryKey(),
-  userId: integer("userId").notNull(),
-  stripeCustomerId: varchar("stripeCustomerId", { length: 255 }),
-  stripeSubscriptionId: varchar("stripeSubscriptionId", { length: 255 }),
-  status: subscriptionStatusEnum("status").default("incomplete").notNull(),
-  plan: subscriptionPlanEnum("plan").notNull(),
-  currentPeriodEnd: timestamp("currentPeriodEnd"),
-  bonusDays: integer("bonusDays").default(0),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull()
-});
-var purchases = pgTable("purchases", {
-  id: serial("id").primaryKey(),
-  userId: integer("userId").notNull(),
-  stripePaymentIntentId: varchar("stripePaymentIntentId", { length: 255 }),
-  productType: varchar("productType", { length: 64 }).notNull(),
-  status: purchaseStatusEnum("status").default("pending").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull()
-});
-var fortuneHistory = pgTable("fortune_history", {
-  id: serial("id").primaryKey(),
-  userId: integer("userId").notNull(),
-  level: varchar("level", { length: 16 }).notNull(),
-  emoji: varchar("emoji", { length: 16 }).notNull(),
-  percent: integer("percent").notNull(),
-  message: text("message"),
-  suggestedTime: varchar("suggestedTime", { length: 32 }),
-  avatar: varchar("avatar", { length: 512 }),
-  createdAt: timestamp("createdAt").defaultNow().notNull()
-});
-var dailyDrawCount = pgTable("daily_draw_count", {
-  id: serial("id").primaryKey(),
-  userId: integer("userId").notNull(),
-  drawDate: date("drawDate").notNull(),
-  count: integer("count").default(0).notNull()
-});
-var invitations = pgTable("invitations", {
-  id: serial("id").primaryKey(),
-  inviterId: integer("inviterId").notNull(),
-  inviteeId: integer("inviteeId").notNull(),
-  rewardDays: integer("rewardDays").default(3).notNull(),
-  rewardClaimed: boolean("rewardClaimed").default(false).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull()
-});
-var feedback = pgTable("feedback", {
-  id: serial("id").primaryKey(),
-  userId: integer("userId"),
-  type: feedbackTypeEnum("type").default("suggestion").notNull(),
-  content: text("content").notNull(),
-  contact: varchar("contact", { length: 255 }),
-  status: feedbackStatusEnum("status").default("pending").notNull(),
-  adminReply: text("adminReply"),
-  repliedAt: timestamp("repliedAt"),
-  userAgent: text("userAgent"),
-  createdAt: timestamp("createdAt").defaultNow().notNull()
-});
-var notifications = pgTable("notifications", {
-  id: serial("id").primaryKey(),
-  userId: integer("userId").notNull(),
-  type: notificationTypeEnum("type").default("system").notNull(),
-  title: varchar("title", { length: 255 }).notNull(),
-  content: text("content").notNull(),
-  relatedId: integer("relatedId"),
-  isRead: boolean("isRead").default(false).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull()
+var userRoleEnum, subscriptionStatusEnum, subscriptionPlanEnum, purchaseStatusEnum, feedbackTypeEnum, feedbackStatusEnum, notificationTypeEnum, users, subscriptions, purchases, fortuneHistory, dailyDrawCount, invitations, feedback, notifications;
+var init_schema = __esm({
+  "drizzle/schema.ts"() {
+    "use strict";
+    userRoleEnum = pgEnum("user_role", ["user", "admin"]);
+    subscriptionStatusEnum = pgEnum("subscription_status", [
+      "active",
+      "canceled",
+      "past_due",
+      "trialing",
+      "incomplete"
+    ]);
+    subscriptionPlanEnum = pgEnum("subscription_plan", [
+      "monthly",
+      "quarterly",
+      "annual",
+      "lifetime"
+    ]);
+    purchaseStatusEnum = pgEnum("purchase_status", [
+      "pending",
+      "completed",
+      "failed"
+    ]);
+    feedbackTypeEnum = pgEnum("feedback_type", [
+      "bug",
+      "feature",
+      "suggestion",
+      "other"
+    ]);
+    feedbackStatusEnum = pgEnum("feedback_status", [
+      "pending",
+      "reviewed",
+      "resolved",
+      "closed"
+    ]);
+    notificationTypeEnum = pgEnum("notification_type", [
+      "feedback_reply",
+      "system",
+      "reward"
+    ]);
+    users = pgTable("users", {
+      id: serial("id").primaryKey(),
+      openId: varchar("openId", { length: 64 }).notNull().unique(),
+      name: text("name"),
+      email: varchar("email", { length: 320 }),
+      /** scrypt hash for optional email/password login; null for guest-only */
+      passwordHash: text("passwordHash"),
+      loginMethod: varchar("loginMethod", { length: 64 }),
+      role: userRoleEnum("role").default("user").notNull(),
+      inviteCode: varchar("inviteCode", { length: 16 }).unique(),
+      invitedBy: integer("invitedBy"),
+      unlockedAvatars: text("unlockedAvatars"),
+      createdAt: timestamp("createdAt").defaultNow().notNull(),
+      updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+      lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull()
+    });
+    subscriptions = pgTable("subscriptions", {
+      id: serial("id").primaryKey(),
+      userId: integer("userId").notNull(),
+      stripeCustomerId: varchar("stripeCustomerId", { length: 255 }),
+      stripeSubscriptionId: varchar("stripeSubscriptionId", { length: 255 }),
+      status: subscriptionStatusEnum("status").default("incomplete").notNull(),
+      plan: subscriptionPlanEnum("plan").notNull(),
+      currentPeriodEnd: timestamp("currentPeriodEnd"),
+      bonusDays: integer("bonusDays").default(0),
+      createdAt: timestamp("createdAt").defaultNow().notNull(),
+      updatedAt: timestamp("updatedAt").defaultNow().notNull()
+    });
+    purchases = pgTable("purchases", {
+      id: serial("id").primaryKey(),
+      userId: integer("userId").notNull(),
+      stripePaymentIntentId: varchar("stripePaymentIntentId", { length: 255 }),
+      productType: varchar("productType", { length: 64 }).notNull(),
+      status: purchaseStatusEnum("status").default("pending").notNull(),
+      createdAt: timestamp("createdAt").defaultNow().notNull()
+    });
+    fortuneHistory = pgTable("fortune_history", {
+      id: serial("id").primaryKey(),
+      userId: integer("userId").notNull(),
+      level: varchar("level", { length: 16 }).notNull(),
+      emoji: varchar("emoji", { length: 16 }).notNull(),
+      percent: integer("percent").notNull(),
+      message: text("message"),
+      suggestedTime: varchar("suggestedTime", { length: 32 }),
+      avatar: varchar("avatar", { length: 512 }),
+      createdAt: timestamp("createdAt").defaultNow().notNull()
+    });
+    dailyDrawCount = pgTable("daily_draw_count", {
+      id: serial("id").primaryKey(),
+      userId: integer("userId").notNull(),
+      drawDate: date("drawDate").notNull(),
+      count: integer("count").default(0).notNull()
+    });
+    invitations = pgTable("invitations", {
+      id: serial("id").primaryKey(),
+      inviterId: integer("inviterId").notNull(),
+      inviteeId: integer("inviteeId").notNull(),
+      rewardDays: integer("rewardDays").default(3).notNull(),
+      rewardClaimed: boolean("rewardClaimed").default(false).notNull(),
+      createdAt: timestamp("createdAt").defaultNow().notNull()
+    });
+    feedback = pgTable("feedback", {
+      id: serial("id").primaryKey(),
+      userId: integer("userId"),
+      type: feedbackTypeEnum("type").default("suggestion").notNull(),
+      content: text("content").notNull(),
+      contact: varchar("contact", { length: 255 }),
+      status: feedbackStatusEnum("status").default("pending").notNull(),
+      adminReply: text("adminReply"),
+      repliedAt: timestamp("repliedAt"),
+      userAgent: text("userAgent"),
+      createdAt: timestamp("createdAt").defaultNow().notNull()
+    });
+    notifications = pgTable("notifications", {
+      id: serial("id").primaryKey(),
+      userId: integer("userId").notNull(),
+      type: notificationTypeEnum("type").default("system").notNull(),
+      title: varchar("title", { length: 255 }).notNull(),
+      content: text("content").notNull(),
+      relatedId: integer("relatedId"),
+      isRead: boolean("isRead").default(false).notNull(),
+      createdAt: timestamp("createdAt").defaultNow().notNull()
+    });
+  }
 });
 
 // server/db.ts
-var _client = null;
-var _db = null;
+import { drizzle } from "drizzle-orm/postgres-js";
+import { eq } from "drizzle-orm";
+import postgres from "postgres";
 async function getDb() {
   const url = process.env.DATABASE_URL || ENV.databaseUrl;
   if (!_db && url) {
@@ -376,46 +280,17 @@ async function getUserById(id2) {
   const result = await db.select().from(users).where(eq(users.id, id2)).limit(1);
   return result.length > 0 ? result[0] : void 0;
 }
-
-// server/_core/systemRouter.ts
-var systemRouter = router({
-  health: publicProcedure.input(
-    z.object({
-      timestamp: z.number().min(0).optional()
-    }).optional()
-  ).query(async () => {
-    const db = await getDb();
-    return {
-      ok: true,
-      service: "moyu-fortune",
-      version: "path-c-1.0",
-      database: Boolean(db),
-      stripe: Boolean(ENV.stripeSecretKey),
-      stripeWebhook: Boolean(ENV.stripeWebhookSecret),
-      llm: Boolean(ENV.forgeApiKey)
-    };
-  }),
-  notifyOwner: adminProcedure.input(
-    z.object({
-      title: z.string().min(1, "title is required"),
-      content: z.string().min(1, "content is required")
-    })
-  ).mutation(async ({ input }) => {
-    const delivered = await notifyOwner(input);
-    return {
-      success: delivered
-    };
-  })
+var _client, _db;
+var init_db = __esm({
+  "server/db.ts"() {
+    "use strict";
+    init_schema();
+    init_env();
+    init_schema();
+    _client = null;
+    _db = null;
+  }
 });
-
-// server/_core/authRouter.ts
-import { z as z2 } from "zod";
-import { TRPCError as TRPCError3 } from "@trpc/server";
-import { eq as eq2 } from "drizzle-orm";
-
-// server/_core/guestAuth.ts
-import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { SignJWT, jwtVerify } from "jose";
 
 // server/_core/cookies.ts
 function isSecureRequest(req) {
@@ -437,8 +312,15 @@ function getSessionCookieOptions(req) {
 function ENV_FORCE_SECURE() {
   return process.env.NODE_ENV === "production";
 }
+var init_cookies = __esm({
+  "server/_core/cookies.ts"() {
+    "use strict";
+  }
+});
 
 // server/_core/guestAuth.ts
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { SignJWT, jwtVerify } from "jose";
 function sessionSecret() {
   const secret = ENV.cookieSecret || "moyu-dev-insecure-jwt-secret-change-me";
   return new TextEncoder().encode(secret);
@@ -528,8 +410,285 @@ function clearSessionCookie(req, res) {
   const opts = getSessionCookieOptions(req);
   res.clearCookie(COOKIE_NAME, { ...opts, maxAge: -1 });
 }
+var init_guestAuth = __esm({
+  "server/_core/guestAuth.ts"() {
+    "use strict";
+    init_const();
+    init_db();
+    init_env();
+    init_cookies();
+  }
+});
+
+// server/_core/deviceUser.ts
+var deviceUser_exports = {};
+__export(deviceUser_exports, {
+  deviceIdFromReq: () => deviceIdFromReq,
+  ensureGuestUser: () => ensureGuestUser,
+  normalizeDeviceId: () => normalizeDeviceId,
+  resolveWriteUser: () => resolveWriteUser,
+  shanghaiTodayKey: () => shanghaiTodayKey,
+  upsertDailyDraw: () => upsertDailyDraw
+});
+import { eq as eq5, sql } from "drizzle-orm";
+function inviteCode2() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+function shanghaiTodayKey(d = /* @__PURE__ */ new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(d);
+}
+function normalizeDeviceId(raw) {
+  const id2 = String(raw || "").trim().slice(0, 80);
+  if (!id2 || id2.length < 8) return "";
+  if (!/^[a-zA-Z0-9_-]{8,80}$/.test(id2)) return "";
+  return id2;
+}
+function deviceIdFromReq(req, bodyDeviceId) {
+  const header = req.headers["x-device-id"];
+  const fromHeader = Array.isArray(header) ? header[0] : header;
+  return normalizeDeviceId(bodyDeviceId) || normalizeDeviceId(fromHeader);
+}
+async function ensureGuestUser(deviceId, name) {
+  const id2 = normalizeDeviceId(deviceId);
+  if (!id2) throw new Error("deviceId required");
+  const openId = guestOpenId(id2);
+  await upsertUser({
+    openId,
+    name: (name || "\u6478\u9C7C\u8FBE\u4EBA").slice(0, 32),
+    loginMethod: "guest",
+    lastSignedIn: /* @__PURE__ */ new Date()
+  });
+  let user = await getUserByOpenId(openId);
+  if (!user) throw new Error("failed to resolve guest user");
+  if (!user.inviteCode) {
+    const database = await getDb();
+    if (database) {
+      let code = inviteCode2();
+      for (let i = 0; i < 8; i++) {
+        const clash = await database.select().from(users).where(eq5(users.inviteCode, code)).limit(1);
+        if (clash.length === 0) break;
+        code = inviteCode2();
+      }
+      await database.update(users).set({ inviteCode: code, updatedAt: /* @__PURE__ */ new Date() }).where(eq5(users.id, user.id));
+      user = await getUserByOpenId(openId);
+    }
+  }
+  return user;
+}
+async function resolveWriteUser(opts) {
+  if (opts.cookieUser) return opts.cookieUser;
+  const id2 = normalizeDeviceId(opts.deviceId);
+  if (!id2) return null;
+  return ensureGuestUser(id2, opts.name);
+}
+async function upsertDailyDraw(opts) {
+  const database = await getDb();
+  if (!database) return { ok: true, upserted: "insert" };
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(opts.date) ? opts.date : shanghaiTodayKey();
+  const existing = await database.execute(sql`
+    SELECT id FROM fortune_history
+    WHERE "userId" = ${opts.userId}
+      AND (
+        ("createdAt")::date = ${day}::date
+        OR (("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Shanghai')::date = ${day}::date
+      )
+    ORDER BY "createdAt" DESC
+    LIMIT 1
+  `);
+  const rows = Array.isArray(existing) ? existing : existing?.rows || [];
+  const existingId = rows[0] ? Number(rows[0].id) : null;
+  if (existingId) {
+    await database.update(fortuneHistory).set({
+      level: opts.level,
+      emoji: opts.emoji,
+      percent: opts.percent,
+      message: opts.message || null,
+      suggestedTime: opts.suggestedTime || null,
+      avatar: opts.avatar || null
+    }).where(eq5(fortuneHistory.id, existingId));
+    return { ok: true, upserted: "update" };
+  }
+  await database.insert(fortuneHistory).values({
+    userId: opts.userId,
+    level: opts.level,
+    emoji: opts.emoji,
+    percent: opts.percent,
+    message: opts.message || null,
+    suggestedTime: opts.suggestedTime || null,
+    avatar: opts.avatar || null
+  });
+  return { ok: true, upserted: "insert" };
+}
+var init_deviceUser = __esm({
+  "server/_core/deviceUser.ts"() {
+    "use strict";
+    init_schema();
+    init_db();
+    init_guestAuth();
+  }
+});
+
+// server/_core/apiOnlyEntry.ts
+import "dotenv/config";
+import express from "express";
+import { createServer } from "http";
+import net from "net";
+import { createExpressMiddleware } from "@trpc/server/adapters/express";
+
+// server/_core/systemRouter.ts
+import { z } from "zod";
+
+// server/_core/notification.ts
+init_env();
+import { TRPCError } from "@trpc/server";
+var TITLE_MAX_LENGTH = 1200;
+var CONTENT_MAX_LENGTH = 2e4;
+var trimValue = (value) => value.trim();
+var isNonEmptyString = (value) => typeof value === "string" && value.trim().length > 0;
+var buildEndpointUrl = (baseUrl) => {
+  const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  return new URL(
+    "webdevtoken.v1.WebDevService/SendNotification",
+    normalizedBase
+  ).toString();
+};
+var validatePayload = (input) => {
+  if (!isNonEmptyString(input.title)) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Notification title is required."
+    });
+  }
+  if (!isNonEmptyString(input.content)) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Notification content is required."
+    });
+  }
+  const title = trimValue(input.title);
+  const content = trimValue(input.content);
+  if (title.length > TITLE_MAX_LENGTH) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `Notification title must be at most ${TITLE_MAX_LENGTH} characters.`
+    });
+  }
+  if (content.length > CONTENT_MAX_LENGTH) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `Notification content must be at most ${CONTENT_MAX_LENGTH} characters.`
+    });
+  }
+  return { title, content };
+};
+async function notifyOwner(payload) {
+  const { title, content } = validatePayload(payload);
+  if (!ENV.forgeApiUrl || !ENV.forgeApiKey) {
+    return false;
+  }
+  const endpoint = buildEndpointUrl(ENV.forgeApiUrl);
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        authorization: `Bearer ${ENV.forgeApiKey}`,
+        "content-type": "application/json",
+        "connect-protocol-version": "1"
+      },
+      body: JSON.stringify({ title, content })
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      console.warn(
+        `[Notification] Failed to notify owner (${response.status} ${response.statusText})${detail ? `: ${detail}` : ""}`
+      );
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.warn("[Notification] Error calling notification service:", error);
+    return false;
+  }
+}
+
+// server/_core/trpc.ts
+init_const();
+import { TRPCError as TRPCError2 } from "@trpc/server";
+import { initTRPC } from "@trpc/server";
+import superjson from "superjson";
+var t = initTRPC.context().create({
+  transformer: superjson
+});
+var router = t.router;
+var publicProcedure = t.procedure;
+var protectedProcedure = t.procedure.use(({ ctx, next }) => {
+  if (!ctx.user) {
+    throw new TRPCError2({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+  }
+  return next({
+    ctx: {
+      ...ctx,
+      user: ctx.user
+    }
+  });
+});
+var adminProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role !== "admin") {
+    throw new TRPCError2({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
+  }
+  return next({ ctx });
+});
+
+// server/_core/systemRouter.ts
+init_env();
+init_db();
+var systemRouter = router({
+  health: publicProcedure.input(
+    z.object({
+      timestamp: z.number().min(0).optional()
+    }).optional()
+  ).query(async () => {
+    const db = await getDb();
+    return {
+      ok: true,
+      service: "moyu-fortune",
+      version: "path-c-1.0",
+      database: Boolean(db),
+      stripe: Boolean(ENV.stripeSecretKey),
+      stripeWebhook: Boolean(ENV.stripeWebhookSecret),
+      llm: Boolean(ENV.forgeApiKey)
+    };
+  }),
+  notifyOwner: adminProcedure.input(
+    z.object({
+      title: z.string().min(1, "title is required"),
+      content: z.string().min(1, "content is required")
+    })
+  ).mutation(async ({ input }) => {
+    const delivered = await notifyOwner(input);
+    return {
+      success: delivered
+    };
+  })
+});
 
 // server/_core/authRouter.ts
+init_const();
+init_schema();
+init_db();
+init_guestAuth();
+import { z as z2 } from "zod";
+import { TRPCError as TRPCError3 } from "@trpc/server";
+import { eq as eq2 } from "drizzle-orm";
 function inviteCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
@@ -1197,8 +1356,10 @@ var fortuneRouter = router({
 import { z as z4 } from "zod";
 import { TRPCError as TRPCError4 } from "@trpc/server";
 import { eq as eq4 } from "drizzle-orm";
+init_env();
 
 // server/stripe/client.ts
+init_env();
 import Stripe from "stripe";
 var _stripe = null;
 function getStripe() {
@@ -1265,7 +1426,12 @@ var PRODUCTS = {
   }
 };
 
+// server/stripe/router.ts
+init_db();
+init_schema();
+
 // server/stripe/activateCheckout.ts
+init_schema();
 import { eq as eq3 } from "drizzle-orm";
 function getMembershipDuration(productKey) {
   const product = PRODUCTS[productKey];
@@ -1591,7 +1757,10 @@ var stripeRouter = router({
 
 // server/routers/member.ts
 import { z as z5 } from "zod";
-import { eq as eq5, and, desc, sql } from "drizzle-orm";
+init_db();
+init_schema();
+init_deviceUser();
+import { eq as eq6, and, desc, sql as sql2 } from "drizzle-orm";
 import { TRPCError as TRPCError5 } from "@trpc/server";
 var VIP_AVATARS = [
   { emoji: "\u{1F984}", name: "\u72EC\u89D2\u517D", requiredLevel: "vip" },
@@ -1613,75 +1782,80 @@ function generateInviteCode() {
   }
   return code;
 }
+var deviceIdInput = z5.string().min(8).max(80).regex(/^[a-zA-Z0-9_-]+$/);
+async function userFromDeviceCtx(ctx, deviceId, name) {
+  const resolved = await resolveWriteUser({
+    cookieUser: ctx.user,
+    deviceId: deviceId || deviceIdFromReq(ctx.req),
+    name
+  });
+  if (!resolved) {
+    throw new TRPCError5({
+      code: "BAD_REQUEST",
+      message: "deviceId required"
+    });
+  }
+  return resolved;
+}
 var memberRouter = router({
-  // 检查是否可以抽签 — 铁律 3：每日确定性，无限查看，无次数墙
-  checkDrawLimit: protectedProcedure.query(async () => {
+  checkDrawLimit: publicProcedure.input(z5.object({ deviceId: deviceIdInput.optional() }).optional()).query(async () => {
     return { canDraw: true, remaining: -1, isVip: false, limit: null };
   }),
-  // 记录抽签 — 幂等：同用户同日仅保留一条（upsert）
-  recordDraw: protectedProcedure.input(z5.object({
-    level: z5.string(),
-    emoji: z5.string(),
-    percent: z5.number(),
-    message: z5.string().optional(),
-    suggestedTime: z5.string().optional(),
-    avatar: z5.string().optional()
-  })).mutation(async ({ ctx, input }) => {
-    const db = await getDb();
-    if (!db) {
-      return { success: true };
-    }
-    const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-    const existing = await db.execute(sql`
-        SELECT id FROM fortune_history
-        WHERE "userId" = ${ctx.user.id}
-          AND ("createdAt")::date = ${today}::date
-        ORDER BY "createdAt" DESC
-        LIMIT 1
-      `);
-    const rows = Array.isArray(existing) ? existing : existing?.rows || [];
-    const existingId = rows[0] ? Number(rows[0].id) : null;
-    if (existingId) {
-      await db.update(fortuneHistory).set({
-        level: input.level,
-        emoji: input.emoji,
-        percent: input.percent,
-        message: input.message || null,
-        suggestedTime: input.suggestedTime || null,
-        avatar: input.avatar || null
-      }).where(eq5(fortuneHistory.id, existingId));
-    } else {
-      await db.insert(fortuneHistory).values({
-        userId: ctx.user.id,
-        level: input.level,
-        emoji: input.emoji,
-        percent: input.percent,
-        message: input.message || null,
-        suggestedTime: input.suggestedTime || null,
-        avatar: input.avatar || null
-      });
-    }
+  /** Device-first ledger write — no cross-site cookie required. */
+  recordDraw: publicProcedure.input(
+    z5.object({
+      deviceId: deviceIdInput.optional(),
+      name: z5.string().max(32).optional(),
+      date: z5.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      level: z5.string(),
+      emoji: z5.string(),
+      percent: z5.number(),
+      message: z5.string().optional(),
+      suggestedTime: z5.string().optional(),
+      avatar: z5.string().optional()
+    })
+  ).mutation(async ({ ctx, input }) => {
+    const user = await userFromDeviceCtx(ctx, input.deviceId, input.name);
+    const date2 = input.date || shanghaiTodayKey();
+    await upsertDailyDraw({
+      userId: user.id,
+      date: date2,
+      level: input.level,
+      emoji: input.emoji,
+      percent: input.percent,
+      message: input.message,
+      suggestedTime: input.suggestedTime,
+      avatar: input.avatar
+    });
     return { success: true };
   }),
-  // 获取抽签历史
-  getHistory: protectedProcedure.input(z5.object({
-    limit: z5.number().min(1).max(100).default(20),
-    offset: z5.number().min(0).default(0)
-  }).optional()).query(async ({ ctx, input }) => {
+  getHistory: publicProcedure.input(
+    z5.object({
+      deviceId: deviceIdInput.optional(),
+      limit: z5.number().min(1).max(100).default(20),
+      offset: z5.number().min(0).default(0)
+    }).optional()
+  ).query(async ({ ctx, input }) => {
     const db = await getDb();
     if (!db) {
       return { history: [], total: 0 };
     }
+    const user = await resolveWriteUser({
+      cookieUser: ctx.user,
+      deviceId: input?.deviceId || deviceIdFromReq(ctx.req)
+    });
+    if (!user) {
+      return { history: [], total: 0 };
+    }
     const limit = input?.limit || 20;
     const offset = input?.offset || 0;
-    const history = await db.select().from(fortuneHistory).where(eq5(fortuneHistory.userId, ctx.user.id)).orderBy(desc(fortuneHistory.createdAt)).limit(limit).offset(offset);
-    const countResult = await db.select({ count: sql`count(*)` }).from(fortuneHistory).where(eq5(fortuneHistory.userId, ctx.user.id));
+    const history = await db.select().from(fortuneHistory).where(eq6(fortuneHistory.userId, user.id)).orderBy(desc(fortuneHistory.createdAt)).limit(limit).offset(offset);
+    const countResult = await db.select({ count: sql2`count(*)` }).from(fortuneHistory).where(eq6(fortuneHistory.userId, user.id));
     return {
       history,
       total: countResult[0]?.count || 0
     };
   }),
-  // 获取可用头像列表
   getAvatars: protectedProcedure.query(async ({ ctx }) => {
     const db = await getDb();
     if (!db) {
@@ -1693,18 +1867,20 @@ var memberRouter = router({
         plan: null
       };
     }
-    const userSubscription = await db.select().from(subscriptions).where(and(
-      eq5(subscriptions.userId, ctx.user.id),
-      eq5(subscriptions.status, "active")
-    )).limit(1);
+    const userSubscription = await db.select().from(subscriptions).where(
+      and(
+        eq6(subscriptions.userId, ctx.user.id),
+        eq6(subscriptions.status, "active")
+      )
+    ).limit(1);
     const isVip = userSubscription.length > 0;
     const plan = userSubscription[0]?.plan || null;
-    const user = await db.select().from(users).where(eq5(users.id, ctx.user.id)).limit(1);
+    const user = await db.select().from(users).where(eq6(users.id, ctx.user.id)).limit(1);
     let unlockedAvatars = [];
     if (user[0]?.unlockedAvatars) {
       try {
         unlockedAvatars = JSON.parse(user[0].unlockedAvatars);
-      } catch (e) {
+      } catch {
         unlockedAvatars = [];
       }
     }
@@ -1716,57 +1892,69 @@ var memberRouter = router({
       plan
     };
   }),
-  // 获取或生成邀请码
-  getInviteCode: protectedProcedure.query(async ({ ctx }) => {
+  getInviteCode: publicProcedure.input(z5.object({ deviceId: deviceIdInput.optional() }).optional()).query(async ({ ctx, input }) => {
     const db = await getDb();
     if (!db) {
       return { inviteCode: null };
     }
-    const user = await db.select().from(users).where(eq5(users.id, ctx.user.id)).limit(1);
-    if (user[0]?.inviteCode) {
-      return { inviteCode: user[0].inviteCode };
+    const user = await userFromDeviceCtx(ctx, input?.deviceId);
+    if (user.inviteCode) {
+      return { inviteCode: user.inviteCode };
     }
     let inviteCode3 = generateInviteCode();
     let attempts = 0;
     while (attempts < 10) {
-      const existing = await db.select().from(users).where(eq5(users.inviteCode, inviteCode3)).limit(1);
+      const existing = await db.select().from(users).where(eq6(users.inviteCode, inviteCode3)).limit(1);
       if (existing.length === 0) break;
       inviteCode3 = generateInviteCode();
       attempts++;
     }
-    await db.update(users).set({ inviteCode: inviteCode3 }).where(eq5(users.id, ctx.user.id));
+    await db.update(users).set({ inviteCode: inviteCode3 }).where(eq6(users.id, user.id));
     return { inviteCode: inviteCode3 };
   }),
-  // 使用邀请码注册
-  applyInviteCode: protectedProcedure.input(z5.object({ inviteCode: z5.string() })).mutation(async ({ ctx, input }) => {
+  applyInviteCode: publicProcedure.input(
+    z5.object({
+      deviceId: deviceIdInput.optional(),
+      inviteCode: z5.string()
+    })
+  ).mutation(async ({ ctx, input }) => {
     const db = await getDb();
     if (!db) {
-      throw new TRPCError5({ code: "INTERNAL_SERVER_ERROR", message: "\u6570\u636E\u5E93\u4E0D\u53EF\u7528" });
+      throw new TRPCError5({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "\u6570\u636E\u5E93\u4E0D\u53EF\u7528"
+      });
     }
-    const currentUser = await db.select().from(users).where(eq5(users.id, ctx.user.id)).limit(1);
-    if (currentUser[0]?.invitedBy) {
+    const currentUser = await userFromDeviceCtx(ctx, input.deviceId);
+    if (currentUser.invitedBy) {
       throw new TRPCError5({ code: "BAD_REQUEST", message: "\u60A8\u5DF2\u4F7F\u7528\u8FC7\u9080\u8BF7\u7801" });
     }
-    const inviter = await db.select().from(users).where(eq5(users.inviteCode, input.inviteCode.toUpperCase())).limit(1);
+    const inviter = await db.select().from(users).where(eq6(users.inviteCode, input.inviteCode.toUpperCase())).limit(1);
     if (inviter.length === 0) {
       throw new TRPCError5({ code: "NOT_FOUND", message: "\u9080\u8BF7\u7801\u65E0\u6548" });
     }
-    if (inviter[0].id === ctx.user.id) {
+    if (inviter[0].id === currentUser.id) {
       throw new TRPCError5({ code: "BAD_REQUEST", message: "\u4E0D\u80FD\u4F7F\u7528\u81EA\u5DF1\u7684\u9080\u8BF7\u7801" });
     }
-    await db.update(users).set({ invitedBy: inviter[0].id }).where(eq5(users.id, ctx.user.id));
+    await db.update(users).set({ invitedBy: inviter[0].id }).where(eq6(users.id, currentUser.id));
     await db.insert(invitations).values({
       inviterId: inviter[0].id,
-      inviteeId: ctx.user.id,
+      inviteeId: currentUser.id,
       rewardDays: INVITE_REWARD_DAYS,
       rewardClaimed: false
     });
     return { success: true, inviterName: inviter[0].name || "\u6478\u9C7C\u8FBE\u4EBA" };
   }),
-  // 获取邀请统计
-  getInviteStats: protectedProcedure.query(async ({ ctx }) => {
+  getInviteStats: publicProcedure.input(z5.object({ deviceId: deviceIdInput.optional() }).optional()).query(async ({ ctx, input }) => {
     const db = await getDb();
     if (!db) {
+      return { totalInvites: 0, claimedRewards: 0, pendingRewards: 0, inviteList: [] };
+    }
+    const user = await resolveWriteUser({
+      cookieUser: ctx.user,
+      deviceId: input?.deviceId || deviceIdFromReq(ctx.req)
+    });
+    if (!user) {
       return { totalInvites: 0, claimedRewards: 0, pendingRewards: 0, inviteList: [] };
     }
     const inviteList = await db.select({
@@ -1776,7 +1964,7 @@ var memberRouter = router({
       rewardClaimed: invitations.rewardClaimed,
       createdAt: invitations.createdAt,
       inviteeName: users.name
-    }).from(invitations).leftJoin(users, eq5(invitations.inviteeId, users.id)).where(eq5(invitations.inviterId, ctx.user.id)).orderBy(desc(invitations.createdAt));
+    }).from(invitations).leftJoin(users, eq6(invitations.inviteeId, users.id)).where(eq6(invitations.inviterId, user.id)).orderBy(desc(invitations.createdAt));
     const totalInvites = inviteList.length;
     const claimedRewards = inviteList.filter((i) => i.rewardClaimed).reduce((sum, i) => sum + i.rewardDays, 0);
     const pendingRewards = inviteList.filter((i) => !i.rewardClaimed).reduce((sum, i) => sum + i.rewardDays, 0);
@@ -1793,33 +1981,43 @@ var memberRouter = router({
       }))
     };
   }),
-  // 领取邀请奖励
-  claimInviteReward: protectedProcedure.input(z5.object({ invitationId: z5.number() })).mutation(async ({ ctx, input }) => {
+  claimInviteReward: publicProcedure.input(
+    z5.object({
+      deviceId: deviceIdInput.optional(),
+      invitationId: z5.number()
+    })
+  ).mutation(async ({ ctx, input }) => {
     const db = await getDb();
     if (!db) {
-      throw new TRPCError5({ code: "INTERNAL_SERVER_ERROR", message: "\u6570\u636E\u5E93\u4E0D\u53EF\u7528" });
+      throw new TRPCError5({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "\u6570\u636E\u5E93\u4E0D\u53EF\u7528"
+      });
     }
-    const invitation = await db.select().from(invitations).where(and(
-      eq5(invitations.id, input.invitationId),
-      eq5(invitations.inviterId, ctx.user.id)
-    )).limit(1);
+    const user = await userFromDeviceCtx(ctx, input.deviceId);
+    const invitation = await db.select().from(invitations).where(
+      and(
+        eq6(invitations.id, input.invitationId),
+        eq6(invitations.inviterId, user.id)
+      )
+    ).limit(1);
     if (invitation.length === 0) {
       throw new TRPCError5({ code: "NOT_FOUND", message: "\u9080\u8BF7\u8BB0\u5F55\u4E0D\u5B58\u5728" });
     }
     if (invitation[0].rewardClaimed) {
       throw new TRPCError5({ code: "BAD_REQUEST", message: "\u5956\u52B1\u5DF2\u9886\u53D6" });
     }
-    await db.update(invitations).set({ rewardClaimed: true }).where(eq5(invitations.id, input.invitationId));
-    const userSubscription = await db.select().from(subscriptions).where(eq5(subscriptions.userId, ctx.user.id)).limit(1);
+    await db.update(invitations).set({ rewardClaimed: true }).where(eq6(invitations.id, input.invitationId));
+    const userSubscription = await db.select().from(subscriptions).where(eq6(subscriptions.userId, user.id)).limit(1);
     if (userSubscription.length > 0) {
       await db.update(subscriptions).set({
         bonusDays: (userSubscription[0].bonusDays || 0) + invitation[0].rewardDays
-      }).where(eq5(subscriptions.id, userSubscription[0].id));
+      }).where(eq6(subscriptions.id, userSubscription[0].id));
     } else {
       const endDate = /* @__PURE__ */ new Date();
       endDate.setDate(endDate.getDate() + invitation[0].rewardDays);
       await db.insert(subscriptions).values({
-        userId: ctx.user.id,
+        userId: user.id,
         status: "active",
         plan: "monthly",
         currentPeriodEnd: endDate,
@@ -1832,7 +2030,9 @@ var memberRouter = router({
 
 // server/routers/feedback.ts
 import { z as z6 } from "zod";
-import { eq as eq6, desc as desc2 } from "drizzle-orm";
+init_schema();
+init_db();
+import { eq as eq7, desc as desc2 } from "drizzle-orm";
 import { TRPCError as TRPCError6 } from "@trpc/server";
 var feedbackRouter = router({
   submit: publicProcedure.input(
@@ -1885,7 +2085,7 @@ var feedbackRouter = router({
   ).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError6({ code: "INTERNAL_SERVER_ERROR", message: "db unavailable" });
-    await db.update(feedback).set({ status: input.status }).where(eq6(feedback.id, input.id));
+    await db.update(feedback).set({ status: input.status }).where(eq7(feedback.id, input.id));
     return { success: true };
   }),
   reply: adminProcedure.input(
@@ -1896,14 +2096,14 @@ var feedbackRouter = router({
   ).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError6({ code: "INTERNAL_SERVER_ERROR", message: "db unavailable" });
-    const rows = await db.select().from(feedback).where(eq6(feedback.id, input.id)).limit(1);
+    const rows = await db.select().from(feedback).where(eq7(feedback.id, input.id)).limit(1);
     const row = rows[0];
     if (!row) throw new TRPCError6({ code: "NOT_FOUND", message: "feedback not found" });
     await db.update(feedback).set({
       adminReply: input.reply,
       repliedAt: /* @__PURE__ */ new Date(),
       status: "resolved"
-    }).where(eq6(feedback.id, input.id));
+    }).where(eq7(feedback.id, input.id));
     if (row.userId) {
       await db.insert(notifications).values({
         userId: row.userId,
@@ -1919,7 +2119,9 @@ var feedbackRouter = router({
 
 // server/routers/notification.ts
 import { z as z7 } from "zod";
-import { eq as eq7, desc as desc3, and as and2, sql as sql2 } from "drizzle-orm";
+init_schema();
+init_db();
+import { eq as eq8, desc as desc3, and as and2, sql as sql3 } from "drizzle-orm";
 var notificationRouter = router({
   // 获取用户通知列表
   list: protectedProcedure.input(
@@ -1935,9 +2137,9 @@ var notificationRouter = router({
     const limit = input?.limit ?? 20;
     const unreadOnly = input?.unreadOnly ?? false;
     if (unreadOnly) {
-      return await db.select().from(notifications).where(and2(eq7(notifications.userId, ctx.user.id), eq7(notifications.isRead, false))).orderBy(desc3(notifications.createdAt)).limit(limit);
+      return await db.select().from(notifications).where(and2(eq8(notifications.userId, ctx.user.id), eq8(notifications.isRead, false))).orderBy(desc3(notifications.createdAt)).limit(limit);
     }
-    return await db.select().from(notifications).where(eq7(notifications.userId, ctx.user.id)).orderBy(desc3(notifications.createdAt)).limit(limit);
+    return await db.select().from(notifications).where(eq8(notifications.userId, ctx.user.id)).orderBy(desc3(notifications.createdAt)).limit(limit);
   }),
   // 获取未读通知数量
   unreadCount: protectedProcedure.query(async ({ ctx }) => {
@@ -1945,7 +2147,7 @@ var notificationRouter = router({
     if (!db) {
       throw new Error("Database not available");
     }
-    const result = await db.select({ count: sql2`count(*)` }).from(notifications).where(and2(eq7(notifications.userId, ctx.user.id), eq7(notifications.isRead, false)));
+    const result = await db.select({ count: sql3`count(*)` }).from(notifications).where(and2(eq8(notifications.userId, ctx.user.id), eq8(notifications.isRead, false)));
     return { count: result[0]?.count ?? 0 };
   }),
   // 标记通知为已读
@@ -1954,7 +2156,7 @@ var notificationRouter = router({
     if (!db) {
       throw new Error("Database not available");
     }
-    await db.update(notifications).set({ isRead: true }).where(and2(eq7(notifications.id, input.id), eq7(notifications.userId, ctx.user.id)));
+    await db.update(notifications).set({ isRead: true }).where(and2(eq8(notifications.id, input.id), eq8(notifications.userId, ctx.user.id)));
     return { success: true };
   }),
   // 标记所有通知为已读
@@ -1963,14 +2165,16 @@ var notificationRouter = router({
     if (!db) {
       throw new Error("Database not available");
     }
-    await db.update(notifications).set({ isRead: true }).where(eq7(notifications.userId, ctx.user.id));
+    await db.update(notifications).set({ isRead: true }).where(eq8(notifications.userId, ctx.user.id));
     return { success: true };
   })
 });
 
 // server/routers/leaderboard.ts
 import { z as z8 } from "zod";
-import { eq as eq8, desc as desc4, sql as sql3, and as and3, gte, lte } from "drizzle-orm";
+init_schema();
+init_db();
+import { eq as eq9, desc as desc4, sql as sql4, and as and3, gte, lte } from "drizzle-orm";
 function getWeekRange() {
   const now = /* @__PURE__ */ new Date();
   const dayOfWeek = now.getDay();
@@ -2000,7 +2204,7 @@ var leaderboardRouter = router({
       return { rankings: [], myRank: null };
     }
     const limit = input?.limit ?? 20;
-    const result = await db.execute(sql3`
+    const result = await db.execute(sql4`
         WITH user_dates AS (
           SELECT
             "userId" AS user_id,
@@ -2065,7 +2269,7 @@ var leaderboardRouter = router({
     const { start, end } = getWeekRange();
     const startIso = start.toISOString();
     const endIso = end.toISOString();
-    const result = await db.execute(sql3`
+    const result = await db.execute(sql4`
         WITH weekly_fortune AS (
           SELECT
             fh."userId" AS user_id,
@@ -2152,16 +2356,28 @@ var leaderboardRouter = router({
       }
     };
   }),
-  myRanking: protectedProcedure.query(async ({ ctx }) => {
+  myRanking: publicProcedure.input(
+    z8.object({
+      deviceId: z8.string().min(8).max(80).regex(/^[a-zA-Z0-9_-]+$/).optional()
+    }).optional()
+  ).query(async ({ ctx, input }) => {
     const db = await getDb();
     if (!db) {
       return { streak: 0, weeklyBest: null, totalDraws: 0 };
     }
-    const streakResult = await db.execute(sql3`
+    const { resolveWriteUser: resolveWriteUser2, deviceIdFromReq: deviceIdFromReq2 } = await Promise.resolve().then(() => (init_deviceUser(), deviceUser_exports));
+    const user = await resolveWriteUser2({
+      cookieUser: ctx.user,
+      deviceId: input?.deviceId || deviceIdFromReq2(ctx.req)
+    });
+    if (!user) {
+      return { streak: 0, weeklyBest: null, totalDraws: 0 };
+    }
+    const streakResult = await db.execute(sql4`
       WITH my_dates AS (
         SELECT ("createdAt")::date AS draw_date
         FROM fortune_history
-        WHERE "userId" = ${ctx.user.id}
+        WHERE "userId" = ${user.id}
         GROUP BY ("createdAt")::date
       ),
       numbered AS (
@@ -2183,12 +2399,12 @@ var leaderboardRouter = router({
       emoji: fortuneHistory.emoji
     }).from(fortuneHistory).where(
       and3(
-        eq8(fortuneHistory.userId, ctx.user.id),
+        eq9(fortuneHistory.userId, user.id),
         gte(fortuneHistory.createdAt, start),
         lte(fortuneHistory.createdAt, end)
       )
     ).orderBy(desc4(fortuneHistory.percent)).limit(1);
-    const totalResult = await db.select({ count: sql3`count(*)` }).from(fortuneHistory).where(eq8(fortuneHistory.userId, ctx.user.id));
+    const totalResult = await db.select({ count: sql4`count(*)` }).from(fortuneHistory).where(eq9(fortuneHistory.userId, user.id));
     return {
       streak,
       weeklyBest: weeklyBest[0] || null,
@@ -2198,22 +2414,33 @@ var leaderboardRouter = router({
   globalStats: publicProcedure.query(async () => {
     const db = await getDb();
     if (!db) {
-      return { totalUsers: 0, totalDraws: 0, todayDraws: 0, avgPercent: 0 };
+      return {
+        totalUsers: 0,
+        drawers: 0,
+        totalDraws: 0,
+        todayDraws: 0,
+        avgPercent: 0
+      };
     }
-    const stats = await db.execute(sql3`
+    const stats = await db.execute(sql4`
       SELECT
-        (SELECT COUNT(DISTINCT id)::int FROM users) AS "totalUsers",
+        (SELECT COUNT(DISTINCT "userId")::int FROM fortune_history) AS "drawers",
         (SELECT COUNT(*)::int FROM fortune_history) AS "totalDraws",
         (
           SELECT COUNT(*)::int
           FROM fortune_history
           WHERE ("createdAt")::date = CURRENT_DATE
+             OR (("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Shanghai')::date
+                = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai')::date
         ) AS "todayDraws",
         (SELECT COALESCE(ROUND(AVG(percent)), 0)::int FROM fortune_history) AS "avgPercent"
     `);
     const row = asRows(stats)[0] || {};
+    const drawers = Number(row.drawers || 0);
     return {
-      totalUsers: Number(row.totalUsers || 0),
+      /** @deprecated use drawers — kept so old clients still render something real */
+      totalUsers: drawers,
+      drawers,
       totalDraws: Number(row.totalDraws || 0),
       todayDraws: Number(row.todayDraws || 0),
       avgPercent: Number(row.avgPercent || 0)
@@ -2227,7 +2454,7 @@ var leaderboardRouter = router({
     const MIN_SAMPLE = 20;
     const db = await getDb();
     if (!db) return { beatPercent: null, sampleSize: 0 };
-    const result = await db.execute(sql3`
+    const result = await db.execute(sql4`
         SELECT
           COUNT(*)::int AS "sampleSize",
           COUNT(*) FILTER (WHERE percent < ${input.percent})::int AS "below"
@@ -2261,6 +2488,7 @@ var appRouter = router({
 });
 
 // server/_core/context.ts
+init_guestAuth();
 async function createContext(opts) {
   let user = null;
   try {
@@ -2277,7 +2505,10 @@ async function createContext(opts) {
 
 // server/stripe/webhook.ts
 import { Router } from "express";
-import { eq as eq9 } from "drizzle-orm";
+init_env();
+init_db();
+init_schema();
+import { eq as eq10 } from "drizzle-orm";
 var webhookRouter = Router();
 webhookRouter.post(
   "/api/stripe/webhook",
@@ -2326,13 +2557,13 @@ webhookRouter.post(
           let dbStatus = "active";
           if (status === "canceled") dbStatus = "canceled";
           else if (status === "past_due") dbStatus = "past_due";
-          await db.update(subscriptions).set({ status: dbStatus, currentPeriodEnd: periodEnd }).where(eq9(subscriptions.stripeSubscriptionId, subscriptionId));
+          await db.update(subscriptions).set({ status: dbStatus, currentPeriodEnd: periodEnd }).where(eq10(subscriptions.stripeSubscriptionId, subscriptionId));
           console.log(`[Webhook] Subscription ${subscriptionId} updated to ${status}`);
           break;
         }
         case "customer.subscription.deleted": {
           const subscription = event.data.object;
-          await db.update(subscriptions).set({ status: "canceled" }).where(eq9(subscriptions.stripeSubscriptionId, subscription.id));
+          await db.update(subscriptions).set({ status: "canceled" }).where(eq10(subscriptions.stripeSubscriptionId, subscription.id));
           console.log(`[Webhook] Subscription ${subscription.id} canceled`);
           break;
         }
@@ -2340,7 +2571,7 @@ webhookRouter.post(
           const invoice = event.data.object;
           const subscriptionId = typeof invoice.subscription === "string" ? invoice.subscription : null;
           if (subscriptionId) {
-            await db.update(subscriptions).set({ status: "past_due" }).where(eq9(subscriptions.stripeSubscriptionId, subscriptionId));
+            await db.update(subscriptions).set({ status: "past_due" }).where(eq10(subscriptions.stripeSubscriptionId, subscriptionId));
             console.log(`[Webhook] Subscription ${subscriptionId} payment failed`);
           }
           break;
@@ -2357,7 +2588,9 @@ webhookRouter.post(
 );
 
 // server/cron/dailyNotification.ts
-import { sql as sql4 } from "drizzle-orm";
+init_db();
+init_schema();
+import { sql as sql5 } from "drizzle-orm";
 var DAILY_TIPS_ZH = [
   "\u{1F41F} \u4ECA\u65E5\u5B9C\u6478\u9C7C\uFF0C\u4E0D\u5B9C\u52A0\u73ED\u3002\u6765\u62BD\u4E00\u7B7E\u770B\u770B\u8FD0\u52BF\u5982\u4F55\uFF1F",
   "\u2615 \u65B0\u7684\u4E00\u5929\uFF0C\u65B0\u7684\u6478\u9C7C\u673A\u4F1A\uFF01\u5FEB\u6765\u770B\u770B\u4ECA\u5929\u7684\u8FD0\u52BF\u5427~",
@@ -2383,7 +2616,7 @@ async function sendDailyNotifications() {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1e3);
     const db = await getDb();
     if (!db) throw new Error("Database not available");
-    const activeUsers = await db.select({ id: users.id, name: users.name }).from(users).where(sql4`${users.lastSignedIn} >= ${sevenDaysAgo}`);
+    const activeUsers = await db.select({ id: users.id, name: users.name }).from(users).where(sql5`${users.lastSignedIn} >= ${sevenDaysAgo}`);
     if (activeUsers.length === 0) {
       console.log("[DailyNotification] No active users found, skipping.");
       return;
@@ -2476,7 +2709,7 @@ function httpUrlFromLibsql(url) {
   }
   return url.replace(/\/$/, "");
 }
-async function tursoExec(sql6, args = []) {
+async function tursoExec(sql7, args = []) {
   const base = httpUrlFromLibsql(LIBSQL_URL);
   const res = await fetch(`${base}/v2/pipeline`, {
     method: "POST",
@@ -2489,7 +2722,7 @@ async function tursoExec(sql6, args = []) {
         {
           type: "execute",
           stmt: {
-            sql: sql6,
+            sql: sql7,
             args: args.map((a) => ({
               type: typeof a === "number" ? "integer" : "text",
               value: String(a)
@@ -2854,43 +3087,16 @@ function updateProfile(input) {
 }
 
 // server/light/pgAlias.ts
-import { and as and4, desc as desc5, eq as eq10, sql as sql5 } from "drizzle-orm";
+init_schema();
+init_db();
+init_guestAuth();
+init_deviceUser();
+import { and as and4, desc as desc5, eq as eq11, sql as sql6 } from "drizzle-orm";
 function asRows2(result) {
   if (Array.isArray(result)) return result;
   const nested = result?.rows;
   if (Array.isArray(nested)) return nested;
   return [];
-}
-function inviteCode2() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  return code;
-}
-async function ensureGuestUser(deviceId, name) {
-  const openId = guestOpenId(deviceId);
-  await upsertUser({
-    openId,
-    name: (name || "\u6478\u9C7C\u8FBE\u4EBA").slice(0, 32),
-    loginMethod: "guest",
-    lastSignedIn: /* @__PURE__ */ new Date()
-  });
-  let user = await getUserByOpenId(openId);
-  if (!user) throw new Error("failed to resolve guest user");
-  if (!user.inviteCode) {
-    const database = await getDb();
-    if (database) {
-      let code = inviteCode2();
-      for (let i = 0; i < 8; i++) {
-        const clash = await database.select().from(users).where(eq10(users.inviteCode, code)).limit(1);
-        if (clash.length === 0) break;
-        code = inviteCode2();
-      }
-      await database.update(users).set({ inviteCode: code, updatedAt: /* @__PURE__ */ new Date() }).where(eq10(users.id, user.id));
-      user = await getUserByOpenId(openId);
-    }
-  }
-  return user;
 }
 async function pgAvailable() {
   const database = await getDb();
@@ -2909,26 +3115,26 @@ async function recordDrawPg(input) {
   const deviceId = String(input.deviceId || "").slice(0, 80);
   if (!deviceId) throw new Error("deviceId required");
   const user = await ensureGuestUser(deviceId, input.name);
-  const database = await getDb();
-  if (!database) throw new Error("database unavailable");
+  if (!await getDb()) throw new Error("database unavailable");
   const level = String(input.level || "\u5C0F\u5409").slice(0, 8);
   const emoji = String(input.emoji || "\u{1F41F}").slice(0, 8);
   const percent = Math.max(0, Math.min(100, Number(input.percent) || 0));
   const message = String(input.message || "").slice(0, 240);
   const suggestedTime = String(input.suggestedTime || "").slice(0, 32);
   const avatar = String(input.avatar || "").slice(0, 64);
-  const inserted = await database.insert(fortuneHistory).values({
+  const date2 = shanghaiTodayKey();
+  await upsertDailyDraw({
     userId: user.id,
+    date: date2,
     level,
     emoji,
     percent,
-    message: message || null,
-    suggestedTime: suggestedTime || null,
-    avatar: avatar || null
-  }).returning();
-  const row = inserted[0];
+    message,
+    suggestedTime,
+    avatar
+  });
   return {
-    id: String(row?.id ?? ""),
+    id: `${user.id}-${date2}`,
     deviceId,
     name: user.name || "\u6478\u9C7C\u8FBE\u4EBA",
     level,
@@ -2937,7 +3143,7 @@ async function recordDrawPg(input) {
     message,
     suggestedTime,
     avatar,
-    createdAt: (row?.createdAt || /* @__PURE__ */ new Date()).toISOString()
+    createdAt: (/* @__PURE__ */ new Date()).toISOString()
   };
 }
 async function getHistoryPg(deviceId, limit = 30) {
@@ -2948,7 +3154,7 @@ async function getHistoryPg(deviceId, limit = 30) {
   const database = await getDb();
   if (!database) return [];
   const lim = Math.max(1, Math.min(100, limit));
-  const rows = await database.select().from(fortuneHistory).where(eq10(fortuneHistory.userId, user.id)).orderBy(desc5(fortuneHistory.createdAt)).limit(lim);
+  const rows = await database.select().from(fortuneHistory).where(eq11(fortuneHistory.userId, user.id)).orderBy(desc5(fortuneHistory.createdAt)).limit(lim);
   return rows.map((r) => ({
     id: String(r.id),
     deviceId: idKey,
@@ -2968,7 +3174,7 @@ async function getLeaderboardPg(limit = 30) {
     return { streak: [], weekly: [], global: { totalDraws: 0, uniqueDevices: 0 } };
   }
   const lim = Math.max(1, Math.min(50, limit));
-  const streakResult = await database.execute(sql5`
+  const streakResult = await database.execute(sql6`
     WITH user_dates AS (
       SELECT
         "userId" AS user_id,
@@ -3023,7 +3229,7 @@ async function getLeaderboardPg(limit = 30) {
       lastDate: String(row.lastDate || "").slice(0, 10)
     };
   });
-  const weeklyResult = await database.execute(sql5`
+  const weeklyResult = await database.execute(sql6`
     SELECT DISTINCT ON (fh."userId")
       fh."userId" AS "userId",
       u.name,
@@ -3048,7 +3254,7 @@ async function getLeaderboardPg(limit = 30) {
       emoji: String(row.emoji || "")
     };
   });
-  const globalResult = await database.execute(sql5`
+  const globalResult = await database.execute(sql6`
     SELECT
       (SELECT COUNT(*)::int FROM fortune_history) AS "totalDraws",
       (SELECT COUNT(DISTINCT "userId")::int FROM fortune_history) AS "uniqueDevices"
@@ -3126,7 +3332,7 @@ async function getInviteStatsPg(deviceId) {
   if (!database) {
     return { inviteCount: 0, claimedRewards: 0, pendingRewards: 0, uses: [] };
   }
-  const rows = await database.select().from(invitations).where(eq10(invitations.inviterId, user.id));
+  const rows = await database.select().from(invitations).where(eq11(invitations.inviterId, user.id));
   const claimed = rows.filter((r) => r.rewardClaimed).length;
   const pending = rows.filter((r) => !r.rewardClaimed).length;
   return {
@@ -3148,11 +3354,11 @@ async function applyInviteCodePg(input) {
   const invitee = await ensureGuestUser(input.deviceId, input.name);
   const database = await getDb();
   if (!database) throw new Error("database unavailable");
-  const owners = await database.select().from(users).where(eq10(users.inviteCode, code)).limit(1);
+  const owners = await database.select().from(users).where(eq11(users.inviteCode, code)).limit(1);
   if (owners.length === 0) throw new Error("invalid_invite");
   const owner = owners[0];
   if (owner.id === invitee.id) throw new Error("self_invite");
-  const existing = await database.select().from(invitations).where(eq10(invitations.inviteeId, invitee.id)).limit(1);
+  const existing = await database.select().from(invitations).where(eq11(invitations.inviteeId, invitee.id)).limit(1);
   if (existing.length > 0) throw new Error("already_invited");
   await database.insert(invitations).values({
     inviterId: owner.id,
@@ -3160,7 +3366,7 @@ async function applyInviteCodePg(input) {
     rewardDays: 3,
     rewardClaimed: false
   });
-  await database.update(users).set({ invitedBy: owner.id, updatedAt: /* @__PURE__ */ new Date() }).where(eq10(users.id, invitee.id));
+  await database.update(users).set({ invitedBy: owner.id, updatedAt: /* @__PURE__ */ new Date() }).where(eq11(users.id, invitee.id));
   return { ok: true, inviterName: owner.name || "\u6478\u9C7C\u8FBE\u4EBA" };
 }
 async function claimInviteRewardPg(input) {
@@ -3169,11 +3375,11 @@ async function claimInviteRewardPg(input) {
   if (!database) throw new Error("database unavailable");
   const id2 = Number(input.invitationId);
   if (!Number.isFinite(id2)) throw new Error("invitationId required");
-  const rows = await database.select().from(invitations).where(and4(eq10(invitations.id, id2), eq10(invitations.inviterId, user.id))).limit(1);
+  const rows = await database.select().from(invitations).where(and4(eq11(invitations.id, id2), eq11(invitations.inviterId, user.id))).limit(1);
   if (rows.length === 0) throw new Error("not_found");
   const row = rows[0];
   if (row.rewardClaimed) throw new Error("already_claimed");
-  await database.update(invitations).set({ rewardClaimed: true }).where(eq10(invitations.id, row.id));
+  await database.update(invitations).set({ rewardClaimed: true }).where(eq11(invitations.id, row.id));
   return { ok: true, rewardDays: row.rewardDays, claimed: true };
 }
 async function getProfilePg(deviceId) {
@@ -3209,7 +3415,7 @@ async function updateProfilePg(input) {
     if (av && !unlocked.includes(av)) unlocked.unshift(av);
     patch.unlockedAvatars = JSON.stringify(unlocked.slice(0, 50));
   }
-  await database.update(users).set(patch).where(eq10(users.id, user.id));
+  await database.update(users).set(patch).where(eq11(users.id, user.id));
   return getProfilePg(input.deviceId);
 }
 
@@ -3437,6 +3643,7 @@ function registerLightApi(app) {
 }
 
 // server/_core/statusPage.ts
+init_env();
 function renderApiStatusPage() {
   const db = Boolean(ENV.databaseUrl);
   const stripe2 = Boolean(ENV.stripeSecretKey);
