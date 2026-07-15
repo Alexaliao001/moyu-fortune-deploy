@@ -43,6 +43,7 @@ var init_const = __esm({
 // drizzle/schema.ts
 var schema_exports = {};
 __export(schema_exports, {
+  adminAuditEvents: () => adminAuditEvents,
   analyticsEvents: () => analyticsEvents,
   dailyDrawCount: () => dailyDrawCount,
   feedback: () => feedback,
@@ -75,7 +76,7 @@ import {
   uniqueIndex,
   varchar
 } from "drizzle-orm/pg-core";
-var userRoleEnum, subscriptionStatusEnum, subscriptionPlanEnum, purchaseStatusEnum, feedbackTypeEnum, feedbackStatusEnum, notificationTypeEnum, analyticsEvents, users, subscriptions, purchases, fortuneHistory, dailyDrawCount, invitations, feedback, notifications;
+var userRoleEnum, subscriptionStatusEnum, subscriptionPlanEnum, purchaseStatusEnum, feedbackTypeEnum, feedbackStatusEnum, notificationTypeEnum, analyticsEvents, adminAuditEvents, users, subscriptions, purchases, fortuneHistory, dailyDrawCount, invitations, feedback, notifications;
 var init_schema = __esm({
   "drizzle/schema.ts"() {
     "use strict";
@@ -142,6 +143,17 @@ var init_schema = __esm({
           table.clientOccurredAt
         )
       ]
+    );
+    adminAuditEvents = pgTable(
+      "admin_audit_events",
+      {
+        id: bigserial("id", { mode: "number" }).primaryKey(),
+        event: varchar("event", { length: 32 }).notNull(),
+        ipHash: varchar("ip_hash", { length: 64 }).notNull(),
+        userAgent: varchar("user_agent", { length: 256 }),
+        createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+      },
+      (table) => [index("admin_audit_events_created_at_idx").on(table.createdAt)]
     );
     users = pgTable("users", {
       id: serial("id").primaryKey(),
@@ -368,10 +380,10 @@ async function signSession(payload, options = {}) {
     name: payload.name || ""
   }).setProtectedHeader({ alg: "HS256", typ: "JWT" }).setExpirationTime(expirationSeconds).sign(sessionSecret());
 }
-async function verifySession(cookieValue) {
-  if (!cookieValue) return null;
+async function verifySession(cookieValue2) {
+  if (!cookieValue2) return null;
   try {
-    const { payload } = await jwtVerify(cookieValue, sessionSecret(), {
+    const { payload } = await jwtVerify(cookieValue2, sessionSecret(), {
       algorithms: ["HS256"]
     });
     const openId = payload.openId;
@@ -674,8 +686,8 @@ var protectedProcedure = t.procedure.use(({ ctx, next }) => {
     }
   });
 });
-var adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (ctx.user.role !== "admin") {
+var adminProcedure = t.procedure.use(({ ctx, next }) => {
+  if (!ctx.adminSession && ctx.user?.role !== "admin") {
     throw new TRPCError2({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
   }
   return next({ ctx });
@@ -2292,19 +2304,240 @@ var appRouter = router({
   leaderboard: leaderboardRouter
 });
 
+// server/_core/adminAuth.ts
+init_schema();
+init_db();
+import {
+  createHmac,
+  randomBytes as randomBytes2,
+  scryptSync as scryptSync2,
+  timingSafeEqual as timingSafeEqual2
+} from "node:crypto";
+import { sql as sql5 } from "drizzle-orm";
+import { SignJWT as SignJWT2, jwtVerify as jwtVerify2 } from "jose";
+var ADMIN_COOKIE_NAME = "moyu_admin_session";
+var ADMIN_SESSION_MS = 8 * 60 * 60 * 1e3;
+var LOGIN_WINDOW_MS = 15 * 60 * 1e3;
+var LOGIN_MAX_ATTEMPTS = 5;
+var loginAttempts = /* @__PURE__ */ new Map();
+async function ensureAdminAuthSchema() {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql5`
+    CREATE TABLE IF NOT EXISTS admin_audit_events (
+      id BIGSERIAL PRIMARY KEY,
+      event VARCHAR(32) NOT NULL,
+      ip_hash VARCHAR(64) NOT NULL,
+      user_agent VARCHAR(256),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql5`
+    CREATE INDEX IF NOT EXISTS admin_audit_events_created_at_idx
+      ON admin_audit_events (created_at)
+  `);
+}
+function configuredPasswordHash() {
+  return process.env.MOYU_ADMIN_PASSWORD_HASH?.trim() || "";
+}
+function configuredSessionSecret() {
+  return process.env.MOYU_ADMIN_SESSION_SECRET?.trim() || "";
+}
+function adminAuthConfigured() {
+  return Boolean(configuredPasswordHash() && configuredSessionSecret());
+}
+function adminPasswordOk(password, stored = configuredPasswordHash()) {
+  if (typeof password !== "string" || password.length < 12 || password.length > 128) {
+    return false;
+  }
+  const [salt, hash] = stored.split(":");
+  if (!salt || !hash || !/^[a-f0-9]+$/i.test(hash)) return false;
+  const expected = Buffer.from(hash, "hex");
+  const actual = scryptSync2(password, salt, 64);
+  if (expected.length !== actual.length) return false;
+  return timingSafeEqual2(expected, actual);
+}
+function sessionSecret2(secret = configuredSessionSecret()) {
+  if (secret.length < 32) return null;
+  return new TextEncoder().encode(secret);
+}
+async function signAdminSession(secret = configuredSessionSecret()) {
+  const key = sessionSecret2(secret);
+  if (!key) throw new Error("admin session secret is not configured");
+  return new SignJWT2({ scope: "moyu:admin" }).setProtectedHeader({ alg: "HS256", typ: "JWT" }).setIssuer("moyu-fortune").setAudience("moyu-admin").setIssuedAt().setExpirationTime(Math.floor((Date.now() + ADMIN_SESSION_MS) / 1e3)).sign(key);
+}
+function cookieValue(req, name) {
+  const header = req.headers.cookie;
+  if (!header) return "";
+  for (const part of header.split(";")) {
+    const index2 = part.indexOf("=");
+    if (index2 === -1) continue;
+    if (part.slice(0, index2).trim() === name) {
+      return decodeURIComponent(part.slice(index2 + 1).trim());
+    }
+  }
+  return "";
+}
+function requestSessionToken(req) {
+  const cookie = cookieValue(req, ADMIN_COOKIE_NAME);
+  if (cookie) return cookie;
+  const authorization = req.headers.authorization;
+  if (typeof authorization === "string" && authorization.toLowerCase().startsWith("bearer ")) {
+    return authorization.slice("Bearer ".length).trim();
+  }
+  return "";
+}
+async function adminSessionOk(req, secret = configuredSessionSecret()) {
+  const key = sessionSecret2(secret);
+  const token = requestSessionToken(req);
+  if (!key || !token || !adminOriginOk(req)) return false;
+  try {
+    const result = await jwtVerify2(token, key, {
+      algorithms: ["HS256"],
+      issuer: "moyu-fortune",
+      audience: "moyu-admin"
+    });
+    return result.payload.scope === "moyu:admin";
+  } catch {
+    return false;
+  }
+}
+function allowedOrigins() {
+  return new Set(
+    (process.env.MOYU_CORS_ORIGINS || "https://chillworks.ai,https://www.chillworks.ai,http://localhost:3000,http://127.0.0.1:3000").split(",").map((value) => value.trim()).filter(Boolean)
+  );
+}
+function adminOriginOk(req) {
+  const origin = req.headers.origin;
+  return typeof origin !== "string" || allowedOrigins().has(origin);
+}
+function loginKey(req) {
+  return req.ip || req.socket.remoteAddress || "unknown";
+}
+async function recordAdminAudit(event, req) {
+  const secret = configuredSessionSecret();
+  const db = await getDb();
+  if (!secret || !db) return;
+  const ipHash = createHmac("sha256", secret).update(loginKey(req)).digest("hex");
+  const userAgent = String(req.headers["user-agent"] || "").slice(0, 256) || null;
+  await db.insert(adminAuditEvents).values({ event, ipHash, userAgent });
+}
+function audit(event, req) {
+  void recordAdminAudit(event, req).catch((error) => {
+    console.warn("[admin auth audit]", event, error);
+  });
+}
+function adminLoginAllowed(key, now = Date.now()) {
+  const current = loginAttempts.get(key);
+  if (!current || now >= current.resetAt) {
+    loginAttempts.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+    return { allowed: true, retryAfterSeconds: 0 };
+  }
+  current.count += 1;
+  if (current.count <= LOGIN_MAX_ATTEMPTS) {
+    return { allowed: true, retryAfterSeconds: 0 };
+  }
+  return {
+    allowed: false,
+    retryAfterSeconds: Math.max(1, Math.ceil((current.resetAt - now) / 1e3))
+  };
+}
+function clearLoginAttempts(req) {
+  loginAttempts.delete(loginKey(req));
+}
+function secureRequest(req) {
+  if (req.protocol === "https") return true;
+  const forwarded = req.headers["x-forwarded-proto"];
+  const values = Array.isArray(forwarded) ? forwarded : forwarded?.split(",") || [];
+  return values.some((value) => value.trim().toLowerCase() === "https");
+}
+function adminCookieOptions(req) {
+  const secure = process.env.NODE_ENV === "production" || secureRequest(req);
+  const sameSite = secure ? req.hostname.endsWith(".chillworks.ai") ? "strict" : "none" : "lax";
+  return {
+    httpOnly: true,
+    secure,
+    sameSite,
+    path: "/api",
+    maxAge: ADMIN_SESSION_MS
+  };
+}
+function requireAdminSession(req, res, next) {
+  void adminSessionOk(req).then((ok) => {
+    if (!ok) {
+      res.status(401).json({ ok: false, error: "unauthorized" });
+      return;
+    }
+    next();
+  });
+}
+function registerAdminAuthApi(app) {
+  app.use("/api/admin", (_req, res, next) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Pragma", "no-cache");
+    next();
+  });
+  app.post("/api/admin/login", async (req, res) => {
+    if (!adminOriginOk(req)) {
+      audit("origin_rejected", req);
+      return res.status(403).json({ ok: false, error: "origin_not_allowed" });
+    }
+    if (!adminAuthConfigured()) {
+      return res.status(503).json({ ok: false, error: "admin_disabled" });
+    }
+    const limit = adminLoginAllowed(loginKey(req));
+    if (!limit.allowed) {
+      audit("login_rate_limited", req);
+      res.setHeader("Retry-After", String(limit.retryAfterSeconds));
+      return res.status(429).json({ ok: false, error: "rate_limited" });
+    }
+    if (!adminPasswordOk(req.body?.password)) {
+      audit("login_failed", req);
+      return res.status(401).json({ ok: false, error: "invalid_credentials" });
+    }
+    clearLoginAttempts(req);
+    audit("login_succeeded", req);
+    const token = await signAdminSession();
+    res.cookie(ADMIN_COOKIE_NAME, token, adminCookieOptions(req));
+    return res.json({
+      ok: true,
+      expiresAt: new Date(Date.now() + ADMIN_SESSION_MS).toISOString(),
+      // The onrender.com fallback cannot rely on third-party cookies. Keep this
+      // signed session in the current tab only until api.chillworks.ai is available.
+      sessionToken: req.hostname.endsWith(".chillworks.ai") ? void 0 : token
+    });
+  });
+  app.get("/api/admin/session", async (req, res) => {
+    return res.json({ ok: true, authenticated: await adminSessionOk(req) });
+  });
+  app.post("/api/admin/logout", (req, res) => {
+    if (!adminOriginOk(req)) {
+      audit("origin_rejected", req);
+      return res.status(403).json({ ok: false, error: "origin_not_allowed" });
+    }
+    audit("logout", req);
+    res.clearCookie(ADMIN_COOKIE_NAME, {
+      ...adminCookieOptions(req),
+      maxAge: -1
+    });
+    return res.json({ ok: true });
+  });
+}
+
 // server/_core/context.ts
 init_guestAuth();
 async function createContext(opts) {
-  let user = null;
-  try {
-    user = await authenticateRequest(opts.req);
-  } catch {
-    user = null;
-  }
+  const [userResult, adminResult] = await Promise.allSettled([
+    authenticateRequest(opts.req),
+    adminSessionOk(opts.req)
+  ]);
+  const user = userResult.status === "fulfilled" ? userResult.value : null;
+  const adminSession = adminResult.status === "fulfilled" ? adminResult.value : false;
   return {
     req: opts.req,
     res: opts.res,
-    user
+    user,
+    adminSession
   };
 }
 
@@ -2366,7 +2599,7 @@ webhookRouter.post(
 // server/cron/dailyNotification.ts
 init_db();
 init_schema();
-import { sql as sql5 } from "drizzle-orm";
+import { sql as sql6 } from "drizzle-orm";
 var DAILY_TIPS_ZH = [
   "\u{1F41F} \u4ECA\u65E5\u5B9C\u6478\u9C7C\uFF0C\u4E0D\u5B9C\u52A0\u73ED\u3002\u6765\u62BD\u4E00\u7B7E\u770B\u770B\u8FD0\u52BF\u5982\u4F55\uFF1F",
   "\u2615 \u65B0\u7684\u4E00\u5929\uFF0C\u65B0\u7684\u6478\u9C7C\u673A\u4F1A\uFF01\u5FEB\u6765\u770B\u770B\u4ECA\u5929\u7684\u8FD0\u52BF\u5427~",
@@ -2392,7 +2625,7 @@ async function sendDailyNotifications() {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1e3);
     const db = await getDb();
     if (!db) throw new Error("Database not available");
-    const activeUsers = await db.select({ id: users.id, name: users.name }).from(users).where(sql5`${users.lastSignedIn} >= ${sevenDaysAgo}`);
+    const activeUsers = await db.select({ id: users.id, name: users.name }).from(users).where(sql6`${users.lastSignedIn} >= ${sevenDaysAgo}`);
     if (activeUsers.length === 0) {
       console.log("[DailyNotification] No active users found, skipping.");
       return;
@@ -2431,420 +2664,10 @@ function startDailyNotificationCron() {
   console.log("[DailyNotification] Cron job registered. Will send at 9:00 AM UTC+8 daily.");
 }
 
-// server/_core/adminOverview.ts
-init_db();
-import { timingSafeEqual as timingSafeEqual2 } from "node:crypto";
-import { sql as sql6 } from "drizzle-orm";
-
-// server/_core/backendVisuals.ts
-var BACKEND_VISUAL_CSS = `
-:root{
-  color-scheme:dark;
-  --bg0:#0a0503;--bg1:#1a0f06;--bg2:#2d1b0e;
-  --gold:#ffd166;--amber:#ffad3d;--copper:#d96b28;
-  --text:#fff7e9;--muted:rgba(255,239,216,.48);
-  --glass:rgba(255,255,255,.055);--glass-strong:rgba(255,255,255,.075);
-  --line:rgba(255,184,77,.16);--line-soft:rgba(255,255,255,.065);
-}
-*{box-sizing:border-box}
-html{min-height:100%;background:var(--bg0)}
-body{
-  margin:0;min-height:100vh;color:var(--text);
-  font-family:"Noto Sans SC",-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;
-  background:
-    radial-gradient(1000px 620px at 50% -12%,rgba(255,145,45,.24),transparent 62%),
-    radial-gradient(700px 480px at 96% 18%,rgba(255,196,84,.08),transparent 62%),
-    linear-gradient(175deg,var(--bg2) 0%,var(--bg1) 34%,var(--bg0) 76%);
-  background-attachment:fixed;
-}
-body::before{
-  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.16;
-  background-image:
-    linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),
-    linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px);
-  background-size:36px 36px;
-  mask-image:linear-gradient(to bottom,rgba(0,0,0,.7),transparent 80%);
-}
-.backend-ambient{
-  position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:0;
-}
-.backend-ambient::before,.backend-ambient::after{
-  content:"";position:absolute;border-radius:50%;filter:blur(2px);
-}
-.backend-ambient::before{
-  width:420px;height:420px;left:-220px;top:28%;
-  background:radial-gradient(circle,rgba(218,99,31,.11),transparent 68%);
-}
-.backend-ambient::after{
-  width:360px;height:360px;right:-190px;bottom:-80px;
-  background:radial-gradient(circle,rgba(255,190,70,.08),transparent 68%);
-}
-.backend-cursor-light{
-  display:none;--cursor-x:50vw;--cursor-y:50vh;
-}
-@media (hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference){
-  .backend-cursor-light{
-    display:block;position:fixed;left:0;top:0;width:clamp(260px,32vw,440px);
-    aspect-ratio:1;z-index:1;pointer-events:none;border-radius:50%;opacity:0;
-    transform:translate3d(var(--cursor-x),var(--cursor-y),0) translate(-50%,-50%);
-    background:radial-gradient(circle,rgba(255,232,178,.13),rgba(255,181,74,.07) 30%,rgba(217,91,22,.025) 53%,transparent 72%);
-    mix-blend-mode:screen;transition:opacity .18s ease;will-change:transform,opacity;contain:strict;
-  }
-  .backend-cursor-light[data-visible="true"]{opacity:1}
-}
-a{color:inherit}
-button,a{-webkit-tap-highlight-color:transparent}
-`;
-function renderBackendVisualLayers() {
-  return `<div class="backend-ambient" aria-hidden="true"></div>
-<div class="backend-cursor-light" aria-hidden="true"></div>
-<script>
-(()=>{const l=document.querySelector(".backend-cursor-light");
-const m=matchMedia("(hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference)");
-if(!l||!m.matches)return;let f=0,x=innerWidth/2,y=innerHeight/2;
-addEventListener("pointermove",e=>{x=e.clientX;y=e.clientY;l.dataset.visible="true";
-if(!f)f=requestAnimationFrame(()=>{l.style.setProperty("--cursor-x",x+"px");l.style.setProperty("--cursor-y",y+"px");f=0})},{passive:true});
-addEventListener("blur",()=>delete l.dataset.visible);
-document.documentElement.addEventListener("mouseleave",()=>delete l.dataset.visible)})();
-</script>`;
-}
-
-// server/_core/adminOverview.ts
-init_deviceUser();
-var EXCLUDED_DEVICE_SQL = "^(smoke|test)-";
-var EXCLUDED_OPENID_SQL = "^guest_(smoke|test)-";
-function adminTokenOk(provided, expected = process.env.MOYU_ADMIN_TOKEN) {
-  if (!expected || typeof provided !== "string" || !provided) return false;
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual2(a, b);
-}
-function requestToken(req) {
-  const q = req.query.token;
-  if (typeof q === "string" && q) return q;
-  const header = req.headers.authorization;
-  if (typeof header === "string" && header.startsWith("Bearer ")) {
-    return header.slice("Bearer ".length);
-  }
-  return "";
-}
-function asRows2(result) {
-  if (Array.isArray(result)) return result;
-  const nested = result?.rows;
-  if (Array.isArray(nested)) return nested;
-  return [];
-}
-function launchDay() {
-  return process.env.MOYU_METRICS_LAUNCH_DATE || "2026-07-15";
-}
-async function buildAdminOverview() {
-  const db = await getDb();
-  if (!db) return null;
-  const day = shanghaiTodayKey();
-  const ledgerToday = asRows2(
-    await db.execute(sql6`
-      SELECT
-        COUNT(*)::int AS draws,
-        COUNT(DISTINCT fh."userId")::int AS draw_devices
-      FROM fortune_history fh
-      JOIN users u ON u.id = fh."userId"
-      WHERE u."openId" !~* ${EXCLUDED_OPENID_SQL}
-        AND ((fh."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Shanghai')::date
-            = ${day}::date
-    `)
-  )[0];
-  const newDevices = asRows2(
-    await db.execute(sql6`
-      SELECT COUNT(*)::int AS n
-      FROM users u
-      WHERE u."openId" !~* ${EXCLUDED_OPENID_SQL}
-        AND ((u."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Shanghai')::date
-            = ${day}::date
-    `)
-  )[0];
-  const eventsToday = asRows2(
-    await db.execute(sql6`
-      SELECT
-        COUNT(*) FILTER (WHERE event = 'share_click')::int AS share_clicks,
-        COUNT(DISTINCT device_id) FILTER (WHERE event = 'share_click')::int AS share_devices,
-        COUNT(*) FILTER (WHERE event = 'card_saved')::int AS card_saves,
-        COUNT(*) FILTER (WHERE event = 'membership_view')::int AS membership_views
-      FROM analytics_events
-      WHERE device_id !~* ${EXCLUDED_DEVICE_SQL}
-        AND (client_occurred_at AT TIME ZONE 'Asia/Shanghai')::date = ${day}::date
-    `)
-  )[0];
-  const totals = asRows2(
-    await db.execute(sql6`
-      SELECT
-        (SELECT COUNT(*)::int FROM fortune_history fh JOIN users u ON u.id = fh."userId"
-          WHERE u."openId" !~* ${EXCLUDED_OPENID_SQL}) AS draws,
-        (SELECT COUNT(DISTINCT fh."userId")::int FROM fortune_history fh JOIN users u ON u.id = fh."userId"
-          WHERE u."openId" !~* ${EXCLUDED_OPENID_SQL}) AS draw_devices,
-        (SELECT COUNT(*)::int FROM feedback) AS feedback
-    `)
-  )[0];
-  const firstDraws = asRows2(
-    await db.execute(sql6`
-      SELECT DISTINCT ON (device_id)
-        device_id,
-        props ->> 'utm_source' AS source
-      FROM analytics_events
-      WHERE event = 'draw'
-        AND device_id !~* ${EXCLUDED_DEVICE_SQL}
-        AND (client_occurred_at AT TIME ZONE 'Asia/Shanghai')::date >= ${launchDay()}::date
-      ORDER BY device_id, client_occurred_at ASC
-    `)
-  );
-  const channelFirstDraws = {};
-  for (const row of firstDraws) {
-    const source = String(row.source || "").trim();
-    if (!source) continue;
-    channelFirstDraws[source] = (channelFirstDraws[source] || 0) + 1;
-  }
-  const recentDraws = asRows2(
-    await db.execute(sql6`
-      SELECT
-        TO_CHAR((fh."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Shanghai',
-                'MM-DD HH24:MI') AS at,
-        u."openId" AS open_id,
-        u.name,
-        fh.level,
-        fh.percent
-      FROM fortune_history fh
-      JOIN users u ON u.id = fh."userId"
-      ORDER BY fh."createdAt" DESC
-      LIMIT 20
-    `)
-  ).map((row) => {
-    const openId = String(row.open_id || "");
-    const deviceId = openId.startsWith("guest_") ? openId.slice(6) : openId;
-    return {
-      at: String(row.at || ""),
-      deviceId: deviceId.slice(0, 12),
-      name: String(row.name || "\u6478\u9C7C\u8FBE\u4EBA"),
-      level: String(row.level || ""),
-      percent: Number(row.percent || 0)
-    };
-  });
-  const recentFeedback = asRows2(
-    await db.execute(sql6`
-      SELECT
-        TO_CHAR((f."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Shanghai',
-                'MM-DD HH24:MI') AS at,
-        f.type,
-        f.content,
-        f.contact
-      FROM feedback f
-      ORDER BY f."createdAt" DESC
-      LIMIT 10
-    `)
-  ).map((row) => ({
-    at: String(row.at || ""),
-    type: String(row.type || ""),
-    content: String(row.content || ""),
-    contact: String(row.contact || "")
-  }));
-  return {
-    ok: true,
-    generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-    day,
-    launchDay: launchDay(),
-    today: {
-      draws: Number(ledgerToday?.draws || 0),
-      drawDevices: Number(ledgerToday?.draw_devices || 0),
-      newDevices: Number(newDevices?.n || 0),
-      shareClicks: Number(eventsToday?.share_clicks || 0),
-      shareDevices: Number(eventsToday?.share_devices || 0),
-      cardSaves: Number(eventsToday?.card_saves || 0),
-      membershipViews: Number(eventsToday?.membership_views || 0)
-    },
-    total: {
-      draws: Number(totals?.draws || 0),
-      drawDevices: Number(totals?.draw_devices || 0),
-      feedback: Number(totals?.feedback || 0)
-    },
-    channelFirstDraws,
-    recentDraws,
-    recentFeedback
-  };
-}
-function escapeHtml(value) {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-function renderHtml(data) {
-  const stat = (label, value) => `<div class="stat"><div class="v">${value}</div><div class="l">${label}</div></div>`;
-  const generatedAt = new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false
-  }).format(new Date(data.generatedAt));
-  const channels = Object.entries(data.channelFirstDraws).sort(([, a], [, b]) => b - a).map(([source, count]) => `<tr><td>${escapeHtml(source)}</td><td>${count}</td></tr>`).join("");
-  const draws = data.recentDraws.map(
-    (row) => `<tr><td>${row.at}</td><td>${escapeHtml(row.name)}</td><td>${escapeHtml(
-      row.deviceId
-    )}\u2026</td><td>${escapeHtml(row.level)} ${row.percent}%</td></tr>`
-  ).join("");
-  const feedback2 = data.recentFeedback.map(
-    (row) => `<tr><td>${row.at}</td><td>${escapeHtml(row.type)}</td><td>${escapeHtml(
-      row.content.slice(0, 120)
-    )}</td><td>${escapeHtml(row.contact)}</td></tr>`
-  ).join("");
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex, nofollow">
-<meta http-equiv="refresh" content="300">
-<title>\u6478\u4E86\u4E48 \xB7 \u8FD0\u8425\u603B\u89C8</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-${BACKEND_VISUAL_CSS}
-.shell{position:relative;z-index:2;width:min(100% - 28px,960px);margin:0 auto;padding:28px 0 52px}
-.mast{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:8px}
-.identity{display:flex;align-items:center;gap:11px;min-width:0}
-.mark{
-  position:relative;width:36px;height:36px;border-radius:50%;flex:none;
-  background:linear-gradient(145deg,#ffdb83,#d36a27);
-  box-shadow:0 0 24px rgba(255,171,56,.2),inset 0 1px 1px rgba(255,255,255,.45);
-}
-.mark::after{
-  content:"";position:absolute;width:8px;height:8px;left:50%;top:50%;
-  transform:translate(-50%,-50%);border-radius:2px;background:#32170a;
-}
-.title{font:400 21px/1 "ZCOOL KuaiLe","PingFang SC",sans-serif;letter-spacing:2px}
-.kicker{color:var(--muted);font-size:9px;letter-spacing:1.7px;margin-top:5px}
-.tools{display:flex;align-items:center;gap:8px;flex:none}
-.live{
-  display:inline-flex;align-items:center;gap:6px;color:rgba(194,242,212,.7);
-  font-size:10px;padding:6px 9px;border:1px solid rgba(104,219,153,.16);
-  border-radius:999px;background:rgba(104,219,153,.045);
-}
-.live i{width:6px;height:6px;border-radius:50%;background:#68db99;box-shadow:0 0 11px rgba(104,219,153,.8)}
-.refresh{
-  min-width:32px;height:32px;padding:0 10px;border-radius:999px;border:1px solid var(--line-soft);
-  color:rgba(255,239,216,.5);background:rgba(255,255,255,.035);font:inherit;font-size:11px;cursor:pointer;
-}
-.refresh:hover{color:var(--text);border-color:var(--line)}
-.sub{color:var(--muted);font-size:11px;line-height:1.7;margin:12px 2px 20px}
-.panel{
-  margin-top:12px;padding:18px;border:1px solid var(--line);border-radius:20px;
-  background:linear-gradient(145deg,var(--glass-strong),rgba(255,255,255,.025));
-  -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
-  box-shadow:0 16px 46px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.055);
-}
-.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:13px}
-h2{font-size:13px;letter-spacing:.08em;color:rgba(255,218,139,.84);margin:0}
-.section-note{color:rgba(255,239,216,.28);font-size:10px}
-.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
-.stat{
-  min-width:0;padding:13px 14px;border:1px solid var(--line-soft);border-radius:14px;
-  background:rgba(5,2,1,.2);box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
-}
-.stat .v{
-  overflow:hidden;text-overflow:ellipsis;font-size:24px;line-height:1.1;font-weight:700;
-  color:var(--gold);text-shadow:0 0 22px rgba(255,185,70,.16);
-}
-.stat .l{font-size:10px;color:rgba(255,232,199,.4);margin-top:6px;white-space:nowrap}
-.table-wrap{max-width:100%;overflow-x:auto;border:1px solid var(--line-soft);border-radius:13px;background:rgba(3,1,0,.16)}
-table{width:100%;border-collapse:collapse;font-size:11px}
-table.wide{min-width:600px}
-th{
-  padding:9px 11px;text-align:left;color:rgba(255,228,184,.34);font-size:9px;
-  font-weight:500;letter-spacing:.08em;border-bottom:1px solid var(--line-soft);
-}
-td{padding:9px 11px;border-bottom:1px solid rgba(255,255,255,.045);vertical-align:top;color:rgba(255,244,226,.67)}
-tr:last-child td{border-bottom:0}
-tbody tr:hover{background:rgba(255,180,60,.035)}
-td:first-child{white-space:nowrap;color:rgba(255,232,199,.34)}
-.empty{color:rgba(255,232,199,.28);font-size:11px;padding:12px 2px}
-.foot{text-align:center;color:rgba(255,242,220,.18);font-size:9px;letter-spacing:1.5px;margin-top:22px}
-@media(min-width:700px){
-  .shell{padding-top:40px}
-  .grid{grid-template-columns:repeat(4,minmax(0,1fr))}
-  .panel{padding:20px}
-}
-@media(max-width:420px){
-  .shell{width:min(100% - 20px,960px);padding-top:18px}
-  .mast{align-items:flex-start}.live{display:none}.panel{padding:14px;border-radius:17px}
-  .refresh{font-size:0}.refresh::after{content:"\u21BB";font-size:16px}
-}
-</style></head><body>
-${renderBackendVisualLayers()}
-<main class="shell">
-<header class="mast">
-  <div class="identity">
-    <span class="mark" aria-hidden="true"></span>
-    <div><div class="title">\u6478\u4E86\u4E48 \xB7 \u8FD0\u8425\u603B\u89C8</div><div class="kicker">OWNER OBSERVABILITY</div></div>
-  </div>
-  <div class="tools"><span class="live"><i></i>\u6570\u636E\u5728\u7EBF</span><button class="refresh" type="button" onclick="location.reload()">\u5237\u65B0</button></div>
-</header>
-<div class="sub">\u4E0A\u6D77\u65F6\u95F4 ${data.day} \xB7 \u66F4\u65B0\u4E8E ${generatedAt} \xB7 \u6BCF 5 \u5206\u949F\u81EA\u52A8\u5237\u65B0 \xB7 \u6D4B\u8BD5\u8BBE\u5907\u5DF2\u6392\u9664</div>
-<section class="panel">
-<div class="section-head"><h2>\u4ECA\u5929</h2><span class="section-note">\u5B9E\u65F6\u884C\u4E3A</span></div>
-<div class="grid">
-${stat("\u62BD\u7B7E\u6B21\u6570", data.today.draws)}
-${stat("\u62BD\u7B7E\u8BBE\u5907", data.today.drawDevices)}
-${stat("\u65B0\u8BBE\u5907", data.today.newDevices)}
-${stat("\u5206\u4EAB\u70B9\u51FB", data.today.shareClicks)}
-${stat("\u5206\u4EAB\u8BBE\u5907", data.today.shareDevices)}
-${stat("\u5361\u7247\u4FDD\u5B58", data.today.cardSaves)}
-${stat("\u4F1A\u5458\u9875\u6D4F\u89C8", data.today.membershipViews)}
-</div>
-</section>
-<section class="panel">
-<div class="section-head"><h2>\u7D2F\u8BA1</h2><span class="section-note">\u771F\u5B9E\u5165\u5E93</span></div>
-<div class="grid">
-${stat("\u603B\u62BD\u7B7E", data.total.draws)}
-${stat("\u603B\u8BBE\u5907", data.total.drawDevices)}
-${stat("\u53CD\u9988\u6761\u6570", data.total.feedback)}
-</div>
-</section>
-<section class="panel">
-<div class="section-head"><h2>\u6E20\u9053\u9996\u62BD</h2><span class="section-note">${data.launchDay} \u8D77</span></div>
-${channels ? `<div class="table-wrap"><table><thead><tr><th>\u6E20\u9053</th><th>\u9996\u62BD\u8BBE\u5907</th></tr></thead><tbody>${channels}</tbody></table></div>` : `<div class="empty">\u6682\u65E0\u6E20\u9053\u6570\u636E \xB7 \u53D1\u5E03\u540E\u663E\u793A jike / xiaohongshu / v2ex / twitter_zh</div>`}
-</section>
-<section class="panel">
-<div class="section-head"><h2>\u6700\u8FD1\u62BD\u7B7E</h2><span class="section-note">\u6700\u8FD1 20 \u6761</span></div>
-${draws ? `<div class="table-wrap"><table class="wide"><thead><tr><th>\u65F6\u95F4</th><th>\u7528\u6237</th><th>\u8BBE\u5907</th><th>\u7ED3\u679C</th></tr></thead><tbody>${draws}</tbody></table></div>` : `<div class="empty">\u6682\u65E0\u62BD\u7B7E</div>`}
-</section>
-<section class="panel">
-<div class="section-head"><h2>\u6700\u8FD1\u53CD\u9988</h2><span class="section-note">\u6700\u8FD1 10 \u6761</span></div>
-${feedback2 ? `<div class="table-wrap"><table class="wide"><thead><tr><th>\u65F6\u95F4</th><th>\u7C7B\u578B</th><th>\u5185\u5BB9</th><th>\u8054\u7CFB\u65B9\u5F0F</th></tr></thead><tbody>${feedback2}</tbody></table></div>` : `<div class="empty">\u6682\u65E0\u53CD\u9988</div>`}
-</section>
-<footer class="foot">\u6478\u4E86\u4E48 \xB7 \u4EC5\u4F9B\u5A31\u4E50</footer>
-</main>
-</body></html>`;
-}
-function registerAdminApi(app) {
-  app.get("/api/admin/overview", async (req, res) => {
-    if (!process.env.MOYU_ADMIN_TOKEN) {
-      return res.status(503).json({ ok: false, error: "admin_disabled" });
-    }
-    if (!adminTokenOk(requestToken(req))) {
-      return res.status(401).json({ ok: false, error: "unauthorized" });
-    }
-    try {
-      const data = await buildAdminOverview();
-      if (!data) return res.status(503).json({ ok: false, error: "no_db" });
-      if (req.query.format === "json") return res.json(data);
-      return res.type("html").send(renderHtml(data));
-    } catch (error) {
-      console.warn("[admin overview]", error);
-      return res.status(500).json({ ok: false });
-    }
-  });
-}
-
 // server/light/store.ts
 import fs from "node:fs";
 import path from "node:path";
-import { createHash as createHash2, randomBytes as randomBytes2 } from "node:crypto";
+import { createHash as createHash2, randomBytes as randomBytes3 } from "node:crypto";
 var DATA_DIR = process.env.MOYU_DATA_DIR || path.join(process.cwd(), "data");
 var DATA_FILE = path.join(DATA_DIR, "moyu-light.json");
 var MAX_DRAWS = 5e3;
@@ -2894,7 +2717,7 @@ function httpUrlFromLibsql(url) {
   }
   return url.replace(/\/$/, "");
 }
-async function tursoExec(sql9, args = []) {
+async function tursoExec(sql10, args = []) {
   const base = httpUrlFromLibsql(LIBSQL_URL);
   const res = await fetch(`${base}/v2/pipeline`, {
     method: "POST",
@@ -2907,7 +2730,7 @@ async function tursoExec(sql9, args = []) {
         {
           type: "execute",
           stmt: {
-            sql: sql9,
+            sql: sql10,
             args: args.map((a) => ({
               type: typeof a === "number" ? "integer" : "text",
               value: String(a)
@@ -2991,7 +2814,7 @@ function persist() {
   }
 }
 function id(prefix) {
-  return `${prefix}_${Date.now().toString(36)}_${randomBytes2(3).toString("hex")}`;
+  return `${prefix}_${Date.now().toString(36)}_${randomBytes3(3).toString("hex")}`;
 }
 function upsertProfile(deviceId, name, avatar) {
   const s = getStore();
@@ -3187,7 +3010,7 @@ init_db();
 init_guestAuth();
 init_deviceUser();
 import { and as and4, desc as desc5, eq as eq10, sql as sql7 } from "drizzle-orm";
-function asRows3(result) {
+function asRows2(result) {
   if (Array.isArray(result)) return result;
   const nested = result?.rows;
   if (Array.isArray(nested)) return nested;
@@ -3313,7 +3136,7 @@ async function getLeaderboardPg(limit = 30) {
     ORDER BY cs.streak_length DESC, cs.last_date DESC
     LIMIT ${lim}
   `);
-  const streak = asRows3(streakResult).map((row, index2) => {
+  const streak = asRows2(streakResult).map((row, index2) => {
     const openId = String(row.openId || "");
     const deviceId = openId.startsWith("guest_") ? openId.slice(6) : openId;
     return {
@@ -3337,7 +3160,7 @@ async function getLeaderboardPg(limit = 30) {
     WHERE fh."createdAt" >= NOW() - INTERVAL '7 days'
     ORDER BY fh."userId", fh.percent DESC, fh."createdAt" DESC
   `);
-  const weekly = asRows3(weeklyResult).sort((a, b) => Number(b.bestPercent) - Number(a.bestPercent)).slice(0, lim).map((row, index2) => {
+  const weekly = asRows2(weeklyResult).sort((a, b) => Number(b.bestPercent) - Number(a.bestPercent)).slice(0, lim).map((row, index2) => {
     const openId = String(row.openId || "");
     const deviceId = openId.startsWith("guest_") ? openId.slice(6) : openId;
     return {
@@ -3354,7 +3177,7 @@ async function getLeaderboardPg(limit = 30) {
       (SELECT COUNT(*)::int FROM fortune_history) AS "totalDraws",
       (SELECT COUNT(DISTINCT "userId")::int FROM fortune_history) AS "uniqueDevices"
   `);
-  const g = asRows3(globalResult)[0] || {};
+  const g = asRows2(globalResult)[0] || {};
   return {
     streak,
     weekly,
@@ -3459,7 +3282,7 @@ function cors(req, res, next) {
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, X-Device-Id, X-Device-Name"
+      "Content-Type, Authorization, X-Device-Id, X-Device-Name, trpc-batch-mode"
     );
   }
   if (req.method === "OPTIONS") {
@@ -3566,11 +3389,7 @@ function registerLightApi(app) {
       });
     }
   });
-  app.get("/api/light/feedback", async (req, res) => {
-    if (!adminTokenOk(requestToken(req))) {
-      res.status(401).json({ ok: false, error: "unauthorized" });
-      return;
-    }
+  app.get("/api/light/feedback", requireAdminSession, async (req, res) => {
     const limit = Number(req.query.limit || 50);
     const list = await usePostgres() ? await listFeedbackPg(limit) : listFeedback(limit);
     res.json({ ok: true, feedback: list });
@@ -3607,6 +3426,79 @@ function registerLightApi(app) {
       });
     }
   });
+}
+
+// server/_core/backendVisuals.ts
+var BACKEND_VISUAL_CSS = `
+:root{
+  color-scheme:dark;
+  --bg0:#0a0503;--bg1:#1a0f06;--bg2:#2d1b0e;
+  --gold:#ffd166;--amber:#ffad3d;--copper:#d96b28;
+  --text:#fff7e9;--muted:rgba(255,239,216,.48);
+  --glass:rgba(255,255,255,.055);--glass-strong:rgba(255,255,255,.075);
+  --line:rgba(255,184,77,.16);--line-soft:rgba(255,255,255,.065);
+}
+*{box-sizing:border-box}
+html{min-height:100%;background:var(--bg0)}
+body{
+  margin:0;min-height:100vh;color:var(--text);
+  font-family:"Noto Sans SC",-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;
+  background:
+    radial-gradient(1000px 620px at 50% -12%,rgba(255,145,45,.24),transparent 62%),
+    radial-gradient(700px 480px at 96% 18%,rgba(255,196,84,.08),transparent 62%),
+    linear-gradient(175deg,var(--bg2) 0%,var(--bg1) 34%,var(--bg0) 76%);
+  background-attachment:fixed;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.16;
+  background-image:
+    linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px);
+  background-size:36px 36px;
+  mask-image:linear-gradient(to bottom,rgba(0,0,0,.7),transparent 80%);
+}
+.backend-ambient{
+  position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:0;
+}
+.backend-ambient::before,.backend-ambient::after{
+  content:"";position:absolute;border-radius:50%;filter:blur(2px);
+}
+.backend-ambient::before{
+  width:420px;height:420px;left:-220px;top:28%;
+  background:radial-gradient(circle,rgba(218,99,31,.11),transparent 68%);
+}
+.backend-ambient::after{
+  width:360px;height:360px;right:-190px;bottom:-80px;
+  background:radial-gradient(circle,rgba(255,190,70,.08),transparent 68%);
+}
+.backend-cursor-light{
+  display:none;--cursor-x:50vw;--cursor-y:50vh;
+}
+@media (hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference){
+  .backend-cursor-light{
+    display:block;position:fixed;left:0;top:0;width:clamp(260px,32vw,440px);
+    aspect-ratio:1;z-index:1;pointer-events:none;border-radius:50%;opacity:0;
+    transform:translate3d(var(--cursor-x),var(--cursor-y),0) translate(-50%,-50%);
+    background:radial-gradient(circle,rgba(255,232,178,.13),rgba(255,181,74,.07) 30%,rgba(217,91,22,.025) 53%,transparent 72%);
+    mix-blend-mode:screen;transition:opacity .18s ease;will-change:transform,opacity;contain:strict;
+  }
+  .backend-cursor-light[data-visible="true"]{opacity:1}
+}
+a{color:inherit}
+button,a{-webkit-tap-highlight-color:transparent}
+`;
+function renderBackendVisualLayers() {
+  return `<div class="backend-ambient" aria-hidden="true"></div>
+<div class="backend-cursor-light" aria-hidden="true"></div>
+<script>
+(()=>{const l=document.querySelector(".backend-cursor-light");
+const m=matchMedia("(hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference)");
+if(!l||!m.matches)return;let f=0,x=innerWidth/2,y=innerHeight/2;
+addEventListener("pointermove",e=>{x=e.clientX;y=e.clientY;l.dataset.visible="true";
+if(!f)f=requestAnimationFrame(()=>{l.style.setProperty("--cursor-x",x+"px");l.style.setProperty("--cursor-y",y+"px");f=0})},{passive:true});
+addEventListener("blur",()=>delete l.dataset.visible);
+document.documentElement.addEventListener("mouseleave",()=>delete l.dataset.visible)})();
+</script>`;
 }
 
 // server/_core/statusPage.ts
@@ -3883,6 +3775,322 @@ function registerAnalyticsApi(app) {
   });
 }
 
+// server/_core/adminOverview.ts
+init_db();
+import { sql as sql9 } from "drizzle-orm";
+init_deviceUser();
+var EXCLUDED_DEVICE_SQL = "^(smoke|test)-";
+var EXCLUDED_OPENID_SQL = "^guest_(smoke|test)-";
+function asRows3(result) {
+  if (Array.isArray(result)) return result;
+  const nested = result?.rows;
+  if (Array.isArray(nested)) return nested;
+  return [];
+}
+function launchDay() {
+  return process.env.MOYU_METRICS_LAUNCH_DATE || "2026-07-15";
+}
+async function buildAdminOverview() {
+  const db = await getDb();
+  if (!db) return null;
+  const day = shanghaiTodayKey();
+  const ledgerToday = asRows3(
+    await db.execute(sql9`
+      SELECT
+        COUNT(*)::int AS draws,
+        COUNT(DISTINCT fh."userId")::int AS draw_devices
+      FROM fortune_history fh
+      JOIN users u ON u.id = fh."userId"
+      WHERE u."openId" !~* ${EXCLUDED_OPENID_SQL}
+        AND ((fh."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Shanghai')::date
+            = ${day}::date
+    `)
+  )[0];
+  const newDevices = asRows3(
+    await db.execute(sql9`
+      SELECT COUNT(*)::int AS n
+      FROM users u
+      WHERE u."openId" !~* ${EXCLUDED_OPENID_SQL}
+        AND ((u."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Shanghai')::date
+            = ${day}::date
+    `)
+  )[0];
+  const eventsToday = asRows3(
+    await db.execute(sql9`
+      SELECT
+        COUNT(*) FILTER (WHERE event = 'share_click')::int AS share_clicks,
+        COUNT(DISTINCT device_id) FILTER (WHERE event = 'share_click')::int AS share_devices,
+        COUNT(*) FILTER (WHERE event = 'card_saved')::int AS card_saves,
+        COUNT(*) FILTER (WHERE event = 'membership_view')::int AS membership_views
+      FROM analytics_events
+      WHERE device_id !~* ${EXCLUDED_DEVICE_SQL}
+        AND (client_occurred_at AT TIME ZONE 'Asia/Shanghai')::date = ${day}::date
+    `)
+  )[0];
+  const totals = asRows3(
+    await db.execute(sql9`
+      SELECT
+        (SELECT COUNT(*)::int FROM fortune_history fh JOIN users u ON u.id = fh."userId"
+          WHERE u."openId" !~* ${EXCLUDED_OPENID_SQL}) AS draws,
+        (SELECT COUNT(DISTINCT fh."userId")::int FROM fortune_history fh JOIN users u ON u.id = fh."userId"
+          WHERE u."openId" !~* ${EXCLUDED_OPENID_SQL}) AS draw_devices,
+        (SELECT COUNT(*)::int FROM feedback) AS feedback
+    `)
+  )[0];
+  const firstDraws = asRows3(
+    await db.execute(sql9`
+      SELECT DISTINCT ON (device_id)
+        device_id,
+        props ->> 'utm_source' AS source
+      FROM analytics_events
+      WHERE event = 'draw'
+        AND device_id !~* ${EXCLUDED_DEVICE_SQL}
+        AND (client_occurred_at AT TIME ZONE 'Asia/Shanghai')::date >= ${launchDay()}::date
+      ORDER BY device_id, client_occurred_at ASC
+    `)
+  );
+  const channelFirstDraws = {};
+  for (const row of firstDraws) {
+    const source = String(row.source || "").trim();
+    if (!source) continue;
+    channelFirstDraws[source] = (channelFirstDraws[source] || 0) + 1;
+  }
+  const recentDraws = asRows3(
+    await db.execute(sql9`
+      SELECT
+        TO_CHAR((fh."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Shanghai',
+                'MM-DD HH24:MI') AS at,
+        u."openId" AS open_id,
+        u.name,
+        fh.level,
+        fh.percent
+      FROM fortune_history fh
+      JOIN users u ON u.id = fh."userId"
+      ORDER BY fh."createdAt" DESC
+      LIMIT 20
+    `)
+  ).map((row) => {
+    const openId = String(row.open_id || "");
+    const deviceId = openId.startsWith("guest_") ? openId.slice(6) : openId;
+    return {
+      at: String(row.at || ""),
+      deviceId: deviceId.slice(0, 12),
+      name: String(row.name || "\u6478\u9C7C\u8FBE\u4EBA"),
+      level: String(row.level || ""),
+      percent: Number(row.percent || 0)
+    };
+  });
+  const recentFeedback = asRows3(
+    await db.execute(sql9`
+      SELECT
+        TO_CHAR((f."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Shanghai',
+                'MM-DD HH24:MI') AS at,
+        f.type,
+        f.content,
+        f.contact
+      FROM feedback f
+      ORDER BY f."createdAt" DESC
+      LIMIT 10
+    `)
+  ).map((row) => ({
+    at: String(row.at || ""),
+    type: String(row.type || ""),
+    content: String(row.content || ""),
+    contact: String(row.contact || "")
+  }));
+  return {
+    ok: true,
+    generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    day,
+    launchDay: launchDay(),
+    today: {
+      draws: Number(ledgerToday?.draws || 0),
+      drawDevices: Number(ledgerToday?.draw_devices || 0),
+      newDevices: Number(newDevices?.n || 0),
+      shareClicks: Number(eventsToday?.share_clicks || 0),
+      shareDevices: Number(eventsToday?.share_devices || 0),
+      cardSaves: Number(eventsToday?.card_saves || 0),
+      membershipViews: Number(eventsToday?.membership_views || 0)
+    },
+    total: {
+      draws: Number(totals?.draws || 0),
+      drawDevices: Number(totals?.draw_devices || 0),
+      feedback: Number(totals?.feedback || 0)
+    },
+    channelFirstDraws,
+    recentDraws,
+    recentFeedback
+  };
+}
+function escapeHtml(value) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function renderHtml(data) {
+  const stat = (label, value) => `<div class="stat"><div class="v">${value}</div><div class="l">${label}</div></div>`;
+  const generatedAt = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  }).format(new Date(data.generatedAt));
+  const channels = Object.entries(data.channelFirstDraws).sort(([, a], [, b]) => b - a).map(([source, count]) => `<tr><td>${escapeHtml(source)}</td><td>${count}</td></tr>`).join("");
+  const draws = data.recentDraws.map(
+    (row) => `<tr><td>${row.at}</td><td>${escapeHtml(row.name)}</td><td>${escapeHtml(
+      row.deviceId
+    )}\u2026</td><td>${escapeHtml(row.level)} ${row.percent}%</td></tr>`
+  ).join("");
+  const feedback2 = data.recentFeedback.map(
+    (row) => `<tr><td>${row.at}</td><td>${escapeHtml(row.type)}</td><td>${escapeHtml(
+      row.content.slice(0, 120)
+    )}</td><td>${escapeHtml(row.contact)}</td></tr>`
+  ).join("");
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="refresh" content="300">
+<title>\u6478\u4E86\u4E48 \xB7 \u8FD0\u8425\u603B\u89C8</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+${BACKEND_VISUAL_CSS}
+.shell{position:relative;z-index:2;width:min(100% - 28px,960px);margin:0 auto;padding:28px 0 52px}
+.mast{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:8px}
+.identity{display:flex;align-items:center;gap:11px;min-width:0}
+.mark{
+  position:relative;width:36px;height:36px;border-radius:50%;flex:none;
+  background:linear-gradient(145deg,#ffdb83,#d36a27);
+  box-shadow:0 0 24px rgba(255,171,56,.2),inset 0 1px 1px rgba(255,255,255,.45);
+}
+.mark::after{
+  content:"";position:absolute;width:8px;height:8px;left:50%;top:50%;
+  transform:translate(-50%,-50%);border-radius:2px;background:#32170a;
+}
+.title{font:400 21px/1 "ZCOOL KuaiLe","PingFang SC",sans-serif;letter-spacing:2px}
+.kicker{color:var(--muted);font-size:9px;letter-spacing:1.7px;margin-top:5px}
+.tools{display:flex;align-items:center;gap:8px;flex:none}
+.live{
+  display:inline-flex;align-items:center;gap:6px;color:rgba(194,242,212,.7);
+  font-size:10px;padding:6px 9px;border:1px solid rgba(104,219,153,.16);
+  border-radius:999px;background:rgba(104,219,153,.045);
+}
+.live i{width:6px;height:6px;border-radius:50%;background:#68db99;box-shadow:0 0 11px rgba(104,219,153,.8)}
+.refresh{
+  min-width:32px;height:32px;padding:0 10px;border-radius:999px;border:1px solid var(--line-soft);
+  color:rgba(255,239,216,.5);background:rgba(255,255,255,.035);font:inherit;font-size:11px;cursor:pointer;
+}
+.refresh:hover{color:var(--text);border-color:var(--line)}
+.sub{color:var(--muted);font-size:11px;line-height:1.7;margin:12px 2px 20px}
+.panel{
+  margin-top:12px;padding:18px;border:1px solid var(--line);border-radius:20px;
+  background:linear-gradient(145deg,var(--glass-strong),rgba(255,255,255,.025));
+  -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
+  box-shadow:0 16px 46px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.055);
+}
+.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:13px}
+h2{font-size:13px;letter-spacing:.08em;color:rgba(255,218,139,.84);margin:0}
+.section-note{color:rgba(255,239,216,.28);font-size:10px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.stat{
+  min-width:0;padding:13px 14px;border:1px solid var(--line-soft);border-radius:14px;
+  background:rgba(5,2,1,.2);box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+}
+.stat .v{
+  overflow:hidden;text-overflow:ellipsis;font-size:24px;line-height:1.1;font-weight:700;
+  color:var(--gold);text-shadow:0 0 22px rgba(255,185,70,.16);
+}
+.stat .l{font-size:10px;color:rgba(255,232,199,.4);margin-top:6px;white-space:nowrap}
+.table-wrap{max-width:100%;overflow-x:auto;border:1px solid var(--line-soft);border-radius:13px;background:rgba(3,1,0,.16)}
+table{width:100%;border-collapse:collapse;font-size:11px}
+table.wide{min-width:600px}
+th{
+  padding:9px 11px;text-align:left;color:rgba(255,228,184,.34);font-size:9px;
+  font-weight:500;letter-spacing:.08em;border-bottom:1px solid var(--line-soft);
+}
+td{padding:9px 11px;border-bottom:1px solid rgba(255,255,255,.045);vertical-align:top;color:rgba(255,244,226,.67)}
+tr:last-child td{border-bottom:0}
+tbody tr:hover{background:rgba(255,180,60,.035)}
+td:first-child{white-space:nowrap;color:rgba(255,232,199,.34)}
+.empty{color:rgba(255,232,199,.28);font-size:11px;padding:12px 2px}
+.foot{text-align:center;color:rgba(255,242,220,.18);font-size:9px;letter-spacing:1.5px;margin-top:22px}
+@media(min-width:700px){
+  .shell{padding-top:40px}
+  .grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .panel{padding:20px}
+}
+@media(max-width:420px){
+  .shell{width:min(100% - 20px,960px);padding-top:18px}
+  .mast{align-items:flex-start}.live{display:none}.panel{padding:14px;border-radius:17px}
+  .refresh{font-size:0}.refresh::after{content:"\u21BB";font-size:16px}
+}
+</style></head><body>
+${renderBackendVisualLayers()}
+<main class="shell">
+<header class="mast">
+  <div class="identity">
+    <span class="mark" aria-hidden="true"></span>
+    <div><div class="title">\u6478\u4E86\u4E48 \xB7 \u8FD0\u8425\u603B\u89C8</div><div class="kicker">OWNER OBSERVABILITY</div></div>
+  </div>
+  <div class="tools"><span class="live"><i></i>\u6570\u636E\u5728\u7EBF</span><button class="refresh" type="button" onclick="location.reload()">\u5237\u65B0</button></div>
+</header>
+<div class="sub">\u4E0A\u6D77\u65F6\u95F4 ${data.day} \xB7 \u66F4\u65B0\u4E8E ${generatedAt} \xB7 \u6BCF 5 \u5206\u949F\u81EA\u52A8\u5237\u65B0 \xB7 \u6D4B\u8BD5\u8BBE\u5907\u5DF2\u6392\u9664</div>
+<section class="panel">
+<div class="section-head"><h2>\u4ECA\u5929</h2><span class="section-note">\u5B9E\u65F6\u884C\u4E3A</span></div>
+<div class="grid">
+${stat("\u62BD\u7B7E\u6B21\u6570", data.today.draws)}
+${stat("\u62BD\u7B7E\u8BBE\u5907", data.today.drawDevices)}
+${stat("\u65B0\u8BBE\u5907", data.today.newDevices)}
+${stat("\u5206\u4EAB\u70B9\u51FB", data.today.shareClicks)}
+${stat("\u5206\u4EAB\u8BBE\u5907", data.today.shareDevices)}
+${stat("\u5361\u7247\u4FDD\u5B58", data.today.cardSaves)}
+${stat("\u4F1A\u5458\u9875\u6D4F\u89C8", data.today.membershipViews)}
+</div>
+</section>
+<section class="panel">
+<div class="section-head"><h2>\u7D2F\u8BA1</h2><span class="section-note">\u771F\u5B9E\u5165\u5E93</span></div>
+<div class="grid">
+${stat("\u603B\u62BD\u7B7E", data.total.draws)}
+${stat("\u603B\u8BBE\u5907", data.total.drawDevices)}
+${stat("\u53CD\u9988\u6761\u6570", data.total.feedback)}
+</div>
+</section>
+<section class="panel">
+<div class="section-head"><h2>\u6E20\u9053\u9996\u62BD</h2><span class="section-note">${data.launchDay} \u8D77</span></div>
+${channels ? `<div class="table-wrap"><table><thead><tr><th>\u6E20\u9053</th><th>\u9996\u62BD\u8BBE\u5907</th></tr></thead><tbody>${channels}</tbody></table></div>` : `<div class="empty">\u6682\u65E0\u6E20\u9053\u6570\u636E \xB7 \u53D1\u5E03\u540E\u663E\u793A jike / xiaohongshu / v2ex / twitter_zh</div>`}
+</section>
+<section class="panel">
+<div class="section-head"><h2>\u6700\u8FD1\u62BD\u7B7E</h2><span class="section-note">\u6700\u8FD1 20 \u6761</span></div>
+${draws ? `<div class="table-wrap"><table class="wide"><thead><tr><th>\u65F6\u95F4</th><th>\u7528\u6237</th><th>\u8BBE\u5907</th><th>\u7ED3\u679C</th></tr></thead><tbody>${draws}</tbody></table></div>` : `<div class="empty">\u6682\u65E0\u62BD\u7B7E</div>`}
+</section>
+<section class="panel">
+<div class="section-head"><h2>\u6700\u8FD1\u53CD\u9988</h2><span class="section-note">\u6700\u8FD1 10 \u6761</span></div>
+${feedback2 ? `<div class="table-wrap"><table class="wide"><thead><tr><th>\u65F6\u95F4</th><th>\u7C7B\u578B</th><th>\u5185\u5BB9</th><th>\u8054\u7CFB\u65B9\u5F0F</th></tr></thead><tbody>${feedback2}</tbody></table></div>` : `<div class="empty">\u6682\u65E0\u53CD\u9988</div>`}
+</section>
+<footer class="foot">\u6478\u4E86\u4E48 \xB7 \u4EC5\u4F9B\u5A31\u4E50</footer>
+</main>
+</body></html>`;
+}
+function registerAdminApi(app) {
+  app.get(
+    "/api/admin/overview",
+    requireAdminSession,
+    async (req, res) => {
+      try {
+        const data = await buildAdminOverview();
+        if (!data) return res.status(503).json({ ok: false, error: "no_db" });
+        if (req.query.format === "json") return res.json(data);
+        return res.type("html").send(renderHtml(data));
+      } catch (error) {
+        console.warn("[admin overview]", error);
+        return res.status(500).json({ ok: false });
+      }
+    }
+  );
+}
+
 // server/_core/apiOnlyEntry.ts
 var ALLOWED_ORIGINS2 = new Set(
   (process.env.MOYU_CORS_ORIGINS || "https://chillworks.ai,https://www.chillworks.ai,http://localhost:3000,http://127.0.0.1:3000").split(",").map((s) => s.trim()).filter(Boolean)
@@ -3924,6 +4132,7 @@ async function findAvailablePort(startPort = 3e3) {
 }
 async function startServer() {
   const app = express();
+  app.set("trust proxy", 1);
   const server = createServer(app);
   app.use(corsMiddleware);
   app.use("/api/stripe/webhook", express.raw({ type: "application/json" }));
@@ -3932,6 +4141,9 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   await ensureAnalyticsSchema().catch((error) => {
     console.warn("[analytics] schema initialization failed", error);
+  });
+  await ensureAdminAuthSchema().catch((error) => {
+    console.warn("[admin auth] schema initialization failed", error);
   });
   app.get("/health", (_req, res) => {
     res.json({
@@ -3943,6 +4155,7 @@ async function startServer() {
   });
   registerLightApi(app);
   registerAnalyticsApi(app);
+  registerAdminAuthApi(app);
   registerAdminApi(app);
   app.use(
     "/api/trpc",
