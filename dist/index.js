@@ -2437,6 +2437,7 @@ init_deviceUser();
 import { timingSafeEqual as timingSafeEqual2 } from "node:crypto";
 import { sql as sql6 } from "drizzle-orm";
 var EXCLUDED_DEVICE_SQL = "^(smoke|test)-";
+var EXCLUDED_OPENID_SQL = "^guest_(smoke|test)-";
 function adminTokenOk(provided, expected = process.env.MOYU_ADMIN_TOKEN) {
   if (!expected || typeof provided !== "string" || !provided) return false;
   const a = Buffer.from(provided);
@@ -2473,7 +2474,7 @@ async function buildAdminOverview() {
         COUNT(DISTINCT fh."userId")::int AS draw_devices
       FROM fortune_history fh
       JOIN users u ON u.id = fh."userId"
-      WHERE u."openId" !~* ${"^guest_" + EXCLUDED_DEVICE_SQL}
+      WHERE u."openId" !~* ${EXCLUDED_OPENID_SQL}
         AND ((fh."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Shanghai')::date
             = ${day}::date
     `)
@@ -2482,7 +2483,7 @@ async function buildAdminOverview() {
     await db.execute(sql6`
       SELECT COUNT(*)::int AS n
       FROM users u
-      WHERE u."openId" !~* ${"^guest_" + EXCLUDED_DEVICE_SQL}
+      WHERE u."openId" !~* ${EXCLUDED_OPENID_SQL}
         AND ((u."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Shanghai')::date
             = ${day}::date
     `)
@@ -2503,9 +2504,9 @@ async function buildAdminOverview() {
     await db.execute(sql6`
       SELECT
         (SELECT COUNT(*)::int FROM fortune_history fh JOIN users u ON u.id = fh."userId"
-          WHERE u."openId" !~* ${"^guest_" + EXCLUDED_DEVICE_SQL}) AS draws,
+          WHERE u."openId" !~* ${EXCLUDED_OPENID_SQL}) AS draws,
         (SELECT COUNT(DISTINCT fh."userId")::int FROM fortune_history fh JOIN users u ON u.id = fh."userId"
-          WHERE u."openId" !~* ${"^guest_" + EXCLUDED_DEVICE_SQL}) AS draw_devices,
+          WHERE u."openId" !~* ${EXCLUDED_OPENID_SQL}) AS draw_devices,
         (SELECT COUNT(*)::int FROM feedback) AS feedback
     `)
   )[0];
