@@ -1,5 +1,5 @@
 {
-  "version": "validation-d1.1",
+  "version": "validation-d1.2",
   "releaseDate": "2026-07-16",
-  "note": "桌面暗金鼠标聚光，后端状态页与运营看板统一品牌视觉"
+  "note": "管理员密码登录、8 小时安全会话与 chillworks.ai/admin 运营后台"
 }
