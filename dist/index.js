@@ -2433,9 +2433,84 @@ function startDailyNotificationCron() {
 
 // server/_core/adminOverview.ts
 init_db();
-init_deviceUser();
 import { timingSafeEqual as timingSafeEqual2 } from "node:crypto";
 import { sql as sql6 } from "drizzle-orm";
+
+// server/_core/backendVisuals.ts
+var BACKEND_VISUAL_CSS = `
+:root{
+  color-scheme:dark;
+  --bg0:#0a0503;--bg1:#1a0f06;--bg2:#2d1b0e;
+  --gold:#ffd166;--amber:#ffad3d;--copper:#d96b28;
+  --text:#fff7e9;--muted:rgba(255,239,216,.48);
+  --glass:rgba(255,255,255,.055);--glass-strong:rgba(255,255,255,.075);
+  --line:rgba(255,184,77,.16);--line-soft:rgba(255,255,255,.065);
+}
+*{box-sizing:border-box}
+html{min-height:100%;background:var(--bg0)}
+body{
+  margin:0;min-height:100vh;color:var(--text);
+  font-family:"Noto Sans SC",-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;
+  background:
+    radial-gradient(1000px 620px at 50% -12%,rgba(255,145,45,.24),transparent 62%),
+    radial-gradient(700px 480px at 96% 18%,rgba(255,196,84,.08),transparent 62%),
+    linear-gradient(175deg,var(--bg2) 0%,var(--bg1) 34%,var(--bg0) 76%);
+  background-attachment:fixed;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.16;
+  background-image:
+    linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px);
+  background-size:36px 36px;
+  mask-image:linear-gradient(to bottom,rgba(0,0,0,.7),transparent 80%);
+}
+.backend-ambient{
+  position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:0;
+}
+.backend-ambient::before,.backend-ambient::after{
+  content:"";position:absolute;border-radius:50%;filter:blur(2px);
+}
+.backend-ambient::before{
+  width:420px;height:420px;left:-220px;top:28%;
+  background:radial-gradient(circle,rgba(218,99,31,.11),transparent 68%);
+}
+.backend-ambient::after{
+  width:360px;height:360px;right:-190px;bottom:-80px;
+  background:radial-gradient(circle,rgba(255,190,70,.08),transparent 68%);
+}
+.backend-cursor-light{
+  display:none;--cursor-x:50vw;--cursor-y:50vh;
+}
+@media (hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference){
+  .backend-cursor-light{
+    display:block;position:fixed;left:0;top:0;width:clamp(260px,32vw,440px);
+    aspect-ratio:1;z-index:1;pointer-events:none;border-radius:50%;opacity:0;
+    transform:translate3d(var(--cursor-x),var(--cursor-y),0) translate(-50%,-50%);
+    background:radial-gradient(circle,rgba(255,232,178,.13),rgba(255,181,74,.07) 30%,rgba(217,91,22,.025) 53%,transparent 72%);
+    mix-blend-mode:screen;transition:opacity .18s ease;will-change:transform,opacity;contain:strict;
+  }
+  .backend-cursor-light[data-visible="true"]{opacity:1}
+}
+a{color:inherit}
+button,a{-webkit-tap-highlight-color:transparent}
+`;
+function renderBackendVisualLayers() {
+  return `<div class="backend-ambient" aria-hidden="true"></div>
+<div class="backend-cursor-light" aria-hidden="true"></div>
+<script>
+(()=>{const l=document.querySelector(".backend-cursor-light");
+const m=matchMedia("(hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference)");
+if(!l||!m.matches)return;let f=0,x=innerWidth/2,y=innerHeight/2;
+addEventListener("pointermove",e=>{x=e.clientX;y=e.clientY;l.dataset.visible="true";
+if(!f)f=requestAnimationFrame(()=>{l.style.setProperty("--cursor-x",x+"px");l.style.setProperty("--cursor-y",y+"px");f=0})},{passive:true});
+addEventListener("blur",()=>delete l.dataset.visible);
+document.documentElement.addEventListener("mouseleave",()=>delete l.dataset.visible)})();
+</script>`;
+}
+
+// server/_core/adminOverview.ts
+init_deviceUser();
 var EXCLUDED_DEVICE_SQL = "^(smoke|test)-";
 var EXCLUDED_OPENID_SQL = "^guest_(smoke|test)-";
 function adminTokenOk(provided, expected = process.env.MOYU_ADMIN_TOKEN) {
@@ -2600,6 +2675,15 @@ function escapeHtml(value) {
 }
 function renderHtml(data) {
   const stat = (label, value) => `<div class="stat"><div class="v">${value}</div><div class="l">${label}</div></div>`;
+  const generatedAt = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  }).format(new Date(data.generatedAt));
   const channels = Object.entries(data.channelFirstDraws).sort(([, a], [, b]) => b - a).map(([source, count]) => `<tr><td>${escapeHtml(source)}</td><td>${count}</td></tr>`).join("");
   const draws = data.recentDraws.map(
     (row) => `<tr><td>${row.at}</td><td>${escapeHtml(row.name)}</td><td>${escapeHtml(
@@ -2616,21 +2700,93 @@ function renderHtml(data) {
 <meta name="robots" content="noindex, nofollow">
 <meta http-equiv="refresh" content="300">
 <title>\u6478\u4E86\u4E48 \xB7 \u8FD0\u8425\u603B\u89C8</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-body{margin:0;padding:20px;background:#140b05;color:#f3e2c7;font:14px/1.5 -apple-system,"PingFang SC",sans-serif}
-h1{font-size:18px;margin:0 0 4px}h2{font-size:14px;color:#d9a94f;margin:22px 0 8px}
-.sub{color:#8d7a5e;font-size:12px}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(105px,1fr));gap:8px;margin-top:14px}
-.stat{background:rgba(255,180,50,.07);border:1px solid rgba(255,180,50,.18);border-radius:12px;padding:10px}
-.stat .v{font-size:22px;font-weight:700;color:#ffd54f}.stat .l{font-size:11px;color:#a98f66;margin-top:2px}
-table{width:100%;border-collapse:collapse;font-size:12px}
-td{padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:top}
-tr td:first-child{white-space:nowrap;color:#8d7a5e}
-.empty{color:#6b5a42;font-size:12px;padding:8px 0}
+${BACKEND_VISUAL_CSS}
+.shell{position:relative;z-index:2;width:min(100% - 28px,960px);margin:0 auto;padding:28px 0 52px}
+.mast{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:8px}
+.identity{display:flex;align-items:center;gap:11px;min-width:0}
+.mark{
+  position:relative;width:36px;height:36px;border-radius:50%;flex:none;
+  background:linear-gradient(145deg,#ffdb83,#d36a27);
+  box-shadow:0 0 24px rgba(255,171,56,.2),inset 0 1px 1px rgba(255,255,255,.45);
+}
+.mark::after{
+  content:"";position:absolute;width:8px;height:8px;left:50%;top:50%;
+  transform:translate(-50%,-50%);border-radius:2px;background:#32170a;
+}
+.title{font:400 21px/1 "ZCOOL KuaiLe","PingFang SC",sans-serif;letter-spacing:2px}
+.kicker{color:var(--muted);font-size:9px;letter-spacing:1.7px;margin-top:5px}
+.tools{display:flex;align-items:center;gap:8px;flex:none}
+.live{
+  display:inline-flex;align-items:center;gap:6px;color:rgba(194,242,212,.7);
+  font-size:10px;padding:6px 9px;border:1px solid rgba(104,219,153,.16);
+  border-radius:999px;background:rgba(104,219,153,.045);
+}
+.live i{width:6px;height:6px;border-radius:50%;background:#68db99;box-shadow:0 0 11px rgba(104,219,153,.8)}
+.refresh{
+  min-width:32px;height:32px;padding:0 10px;border-radius:999px;border:1px solid var(--line-soft);
+  color:rgba(255,239,216,.5);background:rgba(255,255,255,.035);font:inherit;font-size:11px;cursor:pointer;
+}
+.refresh:hover{color:var(--text);border-color:var(--line)}
+.sub{color:var(--muted);font-size:11px;line-height:1.7;margin:12px 2px 20px}
+.panel{
+  margin-top:12px;padding:18px;border:1px solid var(--line);border-radius:20px;
+  background:linear-gradient(145deg,var(--glass-strong),rgba(255,255,255,.025));
+  -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
+  box-shadow:0 16px 46px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.055);
+}
+.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:13px}
+h2{font-size:13px;letter-spacing:.08em;color:rgba(255,218,139,.84);margin:0}
+.section-note{color:rgba(255,239,216,.28);font-size:10px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.stat{
+  min-width:0;padding:13px 14px;border:1px solid var(--line-soft);border-radius:14px;
+  background:rgba(5,2,1,.2);box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+}
+.stat .v{
+  overflow:hidden;text-overflow:ellipsis;font-size:24px;line-height:1.1;font-weight:700;
+  color:var(--gold);text-shadow:0 0 22px rgba(255,185,70,.16);
+}
+.stat .l{font-size:10px;color:rgba(255,232,199,.4);margin-top:6px;white-space:nowrap}
+.table-wrap{max-width:100%;overflow-x:auto;border:1px solid var(--line-soft);border-radius:13px;background:rgba(3,1,0,.16)}
+table{width:100%;border-collapse:collapse;font-size:11px}
+table.wide{min-width:600px}
+th{
+  padding:9px 11px;text-align:left;color:rgba(255,228,184,.34);font-size:9px;
+  font-weight:500;letter-spacing:.08em;border-bottom:1px solid var(--line-soft);
+}
+td{padding:9px 11px;border-bottom:1px solid rgba(255,255,255,.045);vertical-align:top;color:rgba(255,244,226,.67)}
+tr:last-child td{border-bottom:0}
+tbody tr:hover{background:rgba(255,180,60,.035)}
+td:first-child{white-space:nowrap;color:rgba(255,232,199,.34)}
+.empty{color:rgba(255,232,199,.28);font-size:11px;padding:12px 2px}
+.foot{text-align:center;color:rgba(255,242,220,.18);font-size:9px;letter-spacing:1.5px;margin-top:22px}
+@media(min-width:700px){
+  .shell{padding-top:40px}
+  .grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .panel{padding:20px}
+}
+@media(max-width:420px){
+  .shell{width:min(100% - 20px,960px);padding-top:18px}
+  .mast{align-items:flex-start}.live{display:none}.panel{padding:14px;border-radius:17px}
+  .refresh{font-size:0}.refresh::after{content:"\u21BB";font-size:16px}
+}
 </style></head><body>
-<h1>\u6478\u4E86\u4E48 \xB7 \u8FD0\u8425\u603B\u89C8</h1>
-<div class="sub">\u4E0A\u6D77\u65F6\u95F4 ${data.day} \xB7 \u751F\u6210\u4E8E ${escapeHtml(data.generatedAt)} \xB7 \u6BCF 5 \u5206\u949F\u81EA\u52A8\u5237\u65B0 \xB7 smoke-*/test-* \u5DF2\u6392\u9664</div>
-<h2>\u4ECA\u5929</h2>
+${renderBackendVisualLayers()}
+<main class="shell">
+<header class="mast">
+  <div class="identity">
+    <span class="mark" aria-hidden="true"></span>
+    <div><div class="title">\u6478\u4E86\u4E48 \xB7 \u8FD0\u8425\u603B\u89C8</div><div class="kicker">OWNER OBSERVABILITY</div></div>
+  </div>
+  <div class="tools"><span class="live"><i></i>\u6570\u636E\u5728\u7EBF</span><button class="refresh" type="button" onclick="location.reload()">\u5237\u65B0</button></div>
+</header>
+<div class="sub">\u4E0A\u6D77\u65F6\u95F4 ${data.day} \xB7 \u66F4\u65B0\u4E8E ${generatedAt} \xB7 \u6BCF 5 \u5206\u949F\u81EA\u52A8\u5237\u65B0 \xB7 \u6D4B\u8BD5\u8BBE\u5907\u5DF2\u6392\u9664</div>
+<section class="panel">
+<div class="section-head"><h2>\u4ECA\u5929</h2><span class="section-note">\u5B9E\u65F6\u884C\u4E3A</span></div>
 <div class="grid">
 ${stat("\u62BD\u7B7E\u6B21\u6570", data.today.draws)}
 ${stat("\u62BD\u7B7E\u8BBE\u5907", data.today.drawDevices)}
@@ -2640,18 +2796,29 @@ ${stat("\u5206\u4EAB\u8BBE\u5907", data.today.shareDevices)}
 ${stat("\u5361\u7247\u4FDD\u5B58", data.today.cardSaves)}
 ${stat("\u4F1A\u5458\u9875\u6D4F\u89C8", data.today.membershipViews)}
 </div>
-<h2>\u7D2F\u8BA1</h2>
+</section>
+<section class="panel">
+<div class="section-head"><h2>\u7D2F\u8BA1</h2><span class="section-note">\u771F\u5B9E\u5165\u5E93</span></div>
 <div class="grid">
 ${stat("\u603B\u62BD\u7B7E", data.total.draws)}
 ${stat("\u603B\u8BBE\u5907", data.total.drawDevices)}
 ${stat("\u53CD\u9988\u6761\u6570", data.total.feedback)}
 </div>
-<h2>\u6E20\u9053\u9996\u62BD\uFF08${data.launchDay} \u8D77\uFF09</h2>
-${channels ? `<table>${channels}</table>` : `<div class="empty">\u6682\u65E0\u6E20\u9053\u6570\u636E \u2014 \u53D1\u5E16\u540E\u8FD9\u91CC\u4F1A\u51FA\u73B0 jike / xiaohongshu / v2ex / twitter_zh</div>`}
-<h2>\u6700\u8FD1 20 \u6B21\u62BD\u7B7E</h2>
-${draws ? `<table>${draws}</table>` : `<div class="empty">\u6682\u65E0\u62BD\u7B7E</div>`}
-<h2>\u6700\u8FD1\u53CD\u9988</h2>
-${feedback2 ? `<table>${feedback2}</table>` : `<div class="empty">\u6682\u65E0\u53CD\u9988</div>`}
+</section>
+<section class="panel">
+<div class="section-head"><h2>\u6E20\u9053\u9996\u62BD</h2><span class="section-note">${data.launchDay} \u8D77</span></div>
+${channels ? `<div class="table-wrap"><table><thead><tr><th>\u6E20\u9053</th><th>\u9996\u62BD\u8BBE\u5907</th></tr></thead><tbody>${channels}</tbody></table></div>` : `<div class="empty">\u6682\u65E0\u6E20\u9053\u6570\u636E \xB7 \u53D1\u5E03\u540E\u663E\u793A jike / xiaohongshu / v2ex / twitter_zh</div>`}
+</section>
+<section class="panel">
+<div class="section-head"><h2>\u6700\u8FD1\u62BD\u7B7E</h2><span class="section-note">\u6700\u8FD1 20 \u6761</span></div>
+${draws ? `<div class="table-wrap"><table class="wide"><thead><tr><th>\u65F6\u95F4</th><th>\u7528\u6237</th><th>\u8BBE\u5907</th><th>\u7ED3\u679C</th></tr></thead><tbody>${draws}</tbody></table></div>` : `<div class="empty">\u6682\u65E0\u62BD\u7B7E</div>`}
+</section>
+<section class="panel">
+<div class="section-head"><h2>\u6700\u8FD1\u53CD\u9988</h2><span class="section-note">\u6700\u8FD1 10 \u6761</span></div>
+${feedback2 ? `<div class="table-wrap"><table class="wide"><thead><tr><th>\u65F6\u95F4</th><th>\u7C7B\u578B</th><th>\u5185\u5BB9</th><th>\u8054\u7CFB\u65B9\u5F0F</th></tr></thead><tbody>${feedback2}</tbody></table></div>` : `<div class="empty">\u6682\u65E0\u53CD\u9988</div>`}
+</section>
+<footer class="foot">\u6478\u4E86\u4E48 \xB7 \u4EC5\u4F9B\u5A31\u4E50</footer>
+</main>
 </body></html>`;
 }
 function registerAdminApi(app) {
@@ -3443,65 +3610,103 @@ function registerLightApi(app) {
 }
 
 // server/_core/statusPage.ts
-init_env();
 function renderApiStatusPage() {
-  const db = Boolean(ENV.databaseUrl);
-  const stripe2 = Boolean(ENV.stripeSecretKey);
-  const webhook = Boolean(ENV.stripeWebhookSecret);
-  const llm = Boolean(ENV.forgeApiKey);
-  const pill = (on, label) => `<span class="pill ${on ? "on" : "off"}">${on ? "\u25CF" : "\u25CB"} ${label}</span>`;
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>\u6478\u4E86\u4E48 \xB7 moyu-fortune API</title>
+<meta name="robots" content="noindex,nofollow"/>
+<title>\u6478\u4E86\u4E48 \xB7 \u670D\u52A1\u5728\u7EBF</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;600;700&display=swap" rel="stylesheet"/>
 <style>
-:root{--bg0:#1a0f08;--bg1:#2a1810;--copper:#e67a2e;--gold:#ffb32c;--glass:rgba(255,255,255,0.06);--line:rgba(255,180,50,0.22);--text:#fff8f0;--muted:rgba(255,248,240,0.55)}
-*{box-sizing:border-box}
-body{margin:0;min-height:100vh;color:var(--text);font-family:"Noto Sans SC",system-ui,sans-serif;background:radial-gradient(1200px 600px at 10% -10%,rgba(255,140,40,0.28),transparent 55%),radial-gradient(900px 500px at 90% 0%,rgba(255,200,80,0.16),transparent 50%),linear-gradient(165deg,var(--bg0),var(--bg1) 55%,#120b07)}
-.wrap{max-width:44rem;margin:0 auto;padding:2.5rem 1.25rem 3rem}
-.brand{font-family:"ZCOOL KuaiLe",sans-serif;font-size:clamp(2rem,6vw,2.75rem;background:linear-gradient(135deg,var(--gold),var(--copper));-webkit-background-clip:text;background-clip:text;color:transparent;margin:0 0 .35rem}
-.sub{color:var(--muted);margin:0 0 1.25rem;line-height:1.6;font-size:.95rem}
-.card{background:var(--glass);border:1px solid var(--line);border-radius:1.25rem;padding:1.15rem 1.25rem;backdrop-filter:blur(16px);box-shadow:0 12px 40px rgba(0,0,0,0.28),inset 0 1px 0 rgba(255,255,255,0.06);margin-bottom:1rem}
-.ok{display:inline-flex;align-items:center;gap:.5rem;font-weight:700;color:#6ee7a8;margin:0 0 .75rem}
-.ok i{width:.55rem;height:.55rem;border-radius:50%;background:#34d399;box-shadow:0 0 12px #34d399}
-.pills{display:flex;flex-wrap:wrap;gap:.5rem;margin:.5rem 0 1rem}
-.pill{font-size:.78rem;padding:.35rem .65rem;border-radius:999px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2)}
-.pill.on{color:#6ee7a8;border-color:rgba(52,211,153,0.35)}
-.pill.off{color:var(--muted)}
-ul{list-style:none;padding:0;margin:0;display:grid;gap:.55rem}
-li{display:flex;justify-content:space-between;gap:1rem;align-items:center;padding:.7rem .85rem;border-radius:.85rem;background:rgba(0,0,0,0.22);border:1px solid rgba(255,255,255,0.06);font-size:.88rem}
-code{font-family:ui-monospace,Menlo,monospace;color:#ffd089;font-size:.82rem}
-a{color:var(--gold);text-decoration:none}a:hover{text-decoration:underline}
-.cta{display:inline-block;margin-top:1rem;padding:.85rem 1.2rem;border-radius:999px;background:linear-gradient(135deg,var(--gold),var(--copper));color:#1a0800;font-weight:700;box-shadow:0 8px 28px rgba(230,122,46,0.35)}
-.note{margin-top:1rem;color:var(--muted);font-size:.8rem;line-height:1.5}
+${BACKEND_VISUAL_CSS}
+.shell{
+  position:relative;z-index:2;width:min(100% - 32px,560px);min-height:100vh;
+  margin:0 auto;display:flex;flex-direction:column;justify-content:center;padding:42px 0 28px;
+}
+.brand-row{display:flex;align-items:center;gap:11px;margin:0 0 16px;padding:0 4px}
+.mark{
+  position:relative;width:34px;height:34px;border-radius:50%;flex:none;
+  background:linear-gradient(145deg,#ffd87b,#d36a27);
+  box-shadow:0 0 24px rgba(255,171,56,.24),inset 0 1px 1px rgba(255,255,255,.45);
+}
+.mark::after{
+  content:"";position:absolute;width:8px;height:8px;left:50%;top:50%;
+  transform:translate(-50%,-50%);border-radius:2px;background:#32170a;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.65);
+}
+.brand-name{font:400 22px/1 "ZCOOL KuaiLe","PingFang SC",sans-serif;letter-spacing:3px}
+.brand-kicker{color:var(--muted);font-size:9px;letter-spacing:2px;margin-top:5px}
+.hero{
+  position:relative;overflow:hidden;padding:clamp(26px,7vw,42px);
+  border:1px solid var(--line);border-radius:28px;
+  background:linear-gradient(145deg,rgba(255,255,255,.075),rgba(255,255,255,.025));
+  -webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);
+  box-shadow:0 26px 80px rgba(0,0,0,.38),inset 0 1px 0 rgba(255,255,255,.08);
+}
+.hero::before{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(115deg,rgba(255,255,255,.065),transparent 28%);
+}
+.status{
+  position:relative;display:inline-flex;align-items:center;gap:8px;
+  color:rgba(255,240,216,.64);font-size:12px;letter-spacing:.08em;
+}
+.status i{
+  width:7px;height:7px;border-radius:50%;background:#68db99;
+  box-shadow:0 0 14px rgba(104,219,153,.8);
+}
+h1{
+  position:relative;margin:22px 0 10px;font:400 clamp(34px,10vw,48px)/1.12 "ZCOOL KuaiLe","PingFang SC",sans-serif;
+  letter-spacing:4px;background:linear-gradient(135deg,#fff4df 20%,#ffc45e 70%,#e6782d);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.tagline{position:relative;margin:0;color:rgba(255,242,222,.55);font-size:14px;line-height:1.8}
+.traits{position:relative;display:flex;flex-wrap:wrap;gap:8px;margin:24px 0 0}
+.trait{
+  padding:6px 10px;border:1px solid var(--line-soft);border-radius:999px;
+  background:rgba(0,0,0,.15);color:rgba(255,236,207,.45);font-size:11px;
+}
+.actions{position:relative;display:flex;gap:10px;margin-top:28px}
+.button{
+  display:inline-flex;align-items:center;justify-content:center;min-height:45px;padding:0 18px;
+  border-radius:999px;text-decoration:none;font-size:13px;font-weight:700;transition:.2s ease;
+}
+.button:hover{transform:translateY(-1px)}
+.button.primary{
+  flex:1;color:#2b1205;background:linear-gradient(135deg,#ffd66f,#d96b28);
+  box-shadow:0 10px 30px rgba(217,107,40,.25),inset 0 1px 0 rgba(255,255,255,.45);
+}
+.button.secondary{color:rgba(255,238,210,.58);border:1px solid var(--line-soft);background:rgba(255,255,255,.035)}
+.foot{text-align:center;color:rgba(255,242,220,.22);font-size:10px;letter-spacing:2px;margin-top:18px}
+@media(max-width:420px){.actions{flex-direction:column}.button{width:100%}}
 </style>
 </head>
 <body>
-<main class="wrap">
-  <h1 class="brand">\u6478\u4E86\u4E48 \xB7 \u5168\u91CF\u540E\u7AEF</h1>
-  <p class="sub">Path C API \xB7 \u524D\u7AEF\u5728 <a href="https://chillworks.ai">chillworks.ai</a>\uFF0C\u672C\u57DF\u53EA\u63D0\u4F9B tRPC + Stripe + Postgres\u3002</p>
-  <section class="card">
-    <p class="ok"><i></i>moyu-fortune \xB7 path-c-1.0 \xB7 online</p>
-    <div class="pills">
-      ${pill(db, "Postgres")}
-      ${pill(stripe2, "Stripe")}
-      ${pill(webhook, "Webhook")}
-      ${pill(llm, "LLM")}
+${renderBackendVisualLayers()}
+<main class="shell">
+  <header class="brand-row">
+    <span class="mark" aria-hidden="true"></span>
+    <div><div class="brand-name">\u6478\u4E86\u4E48</div><div class="brand-kicker">CHILLWORKS.AI</div></div>
+  </header>
+  <section class="hero">
+    <div class="status"><i></i>\u670D\u52A1\u5728\u7EBF</div>
+    <h1>\u4ECA\u5929\u80FD\u6478\u5417\uFF1F</h1>
+    <p class="tagline">\u6BCF\u5929\u4E00\u7B7E\uFF0C\u6D4B\u6D4B\u4ECA\u5929\u9002\u4E0D\u9002\u5408\u6478\u9C7C\u3002\u6253\u5F00\u5373\u7528\uFF0C\u4E0D\u7528\u6CE8\u518C\u3002</p>
+    <div class="traits">
+      <span class="trait">\u672C\u5730\u5373\u65F6\u51FA\u7B7E</span>
+      <span class="trait">\u6BCF\u65E5\u7ED3\u679C\u56FA\u5B9A</span>
+      <span class="trait">\u7B7E\u6587\u5361\u7247\u514D\u8D39</span>
     </div>
-    <ul>
-      <li><span>\u5065\u5EB7\u68C0\u67E5</span><a href="/health"><code>GET /health</code></a></li>
-      <li><span>\u7CFB\u7EDF\u72B6\u6001</span><code>GET /api/trpc/system.health</code></li>
-      <li><span>\u8BBF\u5BA2\u767B\u5F55</span><code>POST /api/trpc/auth.registerGuest</code></li>
-      <li><span>\u4F1A\u5458 / Stripe</span><code>POST /api/trpc/stripe.createCheckoutSession</code></li>
-      <li><span>\u8F7B\u91CF API</span><a href="/api/light/health"><code>/api/light/*</code></a></li>
-    </ul>
-    <a class="cta" href="https://chillworks.ai/membership">\u6253\u5F00\u4F1A\u5458\u9875 \u2192</a>
-    <p class="note">Render Free \u4F11\u7720\u540E\u9996\u6B21\u6253\u5F00\u53EF\u80FD\u8981\u7B49 30\u201360 \u79D2\u3002\u82E5\u7A7A\u767D\uFF0C\u5237\u65B0\u6216\u5148\u8BBF\u95EE <a href="/health">/health</a> \u5524\u9192\u3002</p>
+    <div class="actions">
+      <a class="button primary" href="https://chillworks.ai">\u53BB\u62BD\u4ECA\u65E5\u7B7E \u2192</a>
+      <a class="button secondary" href="/health">\u670D\u52A1\u72B6\u6001</a>
+    </div>
   </section>
+  <footer class="foot">\u6478\u4E86\u4E48 \xB7 \u4EC5\u4F9B\u5A31\u4E50</footer>
 </main>
 </body>
 </html>`;
