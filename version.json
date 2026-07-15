@@ -1,5 +1,5 @@
 {
-  "version": "validation-d1",
+  "version": "validation-d1.1",
   "releaseDate": "2026-07-16",
-  "note": "老板仪表盘、反馈接口鉴权、OG 缩略图、通知轮询修复、库内测试数据清零"
+  "note": "桌面暗金鼠标聚光，后端状态页与运营看板统一品牌视觉"
 }
