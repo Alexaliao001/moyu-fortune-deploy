@@ -1,37 +1,117 @@
-import { describe, it, expect } from "vitest";
-import { fortuneRouter } from "./fortune";
-import { sloganStats } from "@shared/slogans";
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-describe("Fortune Router (P1-2 library)", () => {
-  const caller = fortuneRouter.createCaller({} as never);
+// Mock the LLM module
+vi.mock('../_core/llm', () => ({
+  invokeLLM: vi.fn(),
+}));
 
-  it("libraryStats meets AGENTS thresholds", async () => {
-    const stats = await caller.libraryStats();
-    expect(stats.totalZh).toBeGreaterThanOrEqual(200);
-    expect(stats.zh["大吉"]).toBeGreaterThanOrEqual(50);
-    expect(stats.zh["吉"]).toBeGreaterThanOrEqual(50);
-    expect(stats.zh["平"]).toBeGreaterThanOrEqual(50);
-    expect(stats.zh["凶"]).toBeGreaterThanOrEqual(50);
+import { fortuneRouter } from './fortune';
+import { invokeLLM } from '../_core/llm';
+
+describe('Fortune Router', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  it("generateSlogan returns library slogan", async () => {
-    const result = await caller.generateSlogan({
-      level: "大吉",
-      percent: 95,
-      language: "zh",
+  describe('generateSlogan', () => {
+    it('should return AI-generated slogan when LLM succeeds', async () => {
+      const mockSlogan = '今天画的饼够我撑到下个世纪了，先摸为敬。';
+      
+      vi.mocked(invokeLLM).mockResolvedValueOnce({
+        id: 'test-id',
+        created: Date.now(),
+        model: 'test-model',
+        choices: [{
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: mockSlogan,
+          },
+          finish_reason: 'stop',
+        }],
+      });
+
+      const caller = fortuneRouter.createCaller({} as any);
+      const result = await caller.generateSlogan({
+        level: '大吉',
+        percent: 95,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.slogan).toBe(mockSlogan);
+      expect(result.source).toBe('ai');
     });
-    expect(result.success).toBe(true);
-    expect(result.source).toBe("library");
-    expect(result.slogan.length).toBeGreaterThan(4);
-  });
 
-  it("is deterministic for same level+percent", async () => {
-    const a = await caller.generateSlogan({ level: "凶", percent: 20, language: "zh" });
-    const b = await caller.generateSlogan({ level: "凶", percent: 20, language: "zh" });
-    expect(a.slogan).toBe(b.slogan);
-  });
+    it('should return fallback slogan when LLM returns empty content', async () => {
+      vi.mocked(invokeLLM).mockResolvedValueOnce({
+        id: 'test-id',
+        created: Date.now(),
+        model: 'test-model',
+        choices: [{
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: '',
+          },
+          finish_reason: 'stop',
+        }],
+      });
 
-  it("shared stats match", () => {
-    expect(sloganStats().totalZh).toBeGreaterThanOrEqual(200);
+      const caller = fortuneRouter.createCaller({} as any);
+      const result = await caller.generateSlogan({
+        level: '大吉',
+        percent: 95,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.slogan).toBeTruthy();
+      expect(result.source).toBe('fallback');
+    });
+
+    it('should return fallback slogan when LLM throws error', async () => {
+      vi.mocked(invokeLLM).mockRejectedValueOnce(new Error('LLM API Error'));
+
+      const caller = fortuneRouter.createCaller({} as any);
+      const result = await caller.generateSlogan({
+        level: '中吉',
+        percent: 75,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.slogan).toBeTruthy();
+      expect(result.source).toBe('fallback');
+    });
+
+    it('should handle all fortune levels', async () => {
+      const levels = ['大吉', '中吉', '小吉', '末吉', '凶'];
+      
+      for (const level of levels) {
+        vi.mocked(invokeLLM).mockRejectedValueOnce(new Error('Test fallback'));
+        
+        const caller = fortuneRouter.createCaller({} as any);
+        const result = await caller.generateSlogan({
+          level,
+          percent: 50,
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.slogan).toBeTruthy();
+        expect(typeof result.slogan).toBe('string');
+      }
+    });
+
+    it('should use 小吉 fallback for unknown levels', async () => {
+      vi.mocked(invokeLLM).mockRejectedValueOnce(new Error('Test fallback'));
+      
+      const caller = fortuneRouter.createCaller({} as any);
+      const result = await caller.generateSlogan({
+        level: '未知等级',
+        percent: 50,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.slogan).toBeTruthy();
+      expect(result.source).toBe('fallback');
+    });
   });
 });

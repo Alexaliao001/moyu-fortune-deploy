@@ -1,26 +1,15 @@
-import { drizzle } from "drizzle-orm/postgres-js";
 import { eq } from "drizzle-orm";
-import postgres from "postgres";
+import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users } from "../drizzle/schema";
-import { ENV } from "./_core/env";
-import * as schema from "../drizzle/schema";
+import { ENV } from './_core/env';
 
-let _client: ReturnType<typeof postgres> | null = null;
-let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
+let _db: ReturnType<typeof drizzle> | null = null;
 
+// Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
-  const url = process.env.DATABASE_URL || ENV.databaseUrl;
-  if (!_db && url) {
+  if (!_db && process.env.DATABASE_URL) {
     try {
-      _client = postgres(url, {
-        max: 5,
-        idle_timeout: 20,
-        connect_timeout: 15,
-        ssl: url.includes("render.com") || url.includes("sslmode=require")
-          ? "require"
-          : undefined,
-      });
-      _db = drizzle(_client, { schema });
+      _db = drizzle(process.env.DATABASE_URL);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -43,39 +32,45 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   try {
     const values: InsertUser = {
       openId: user.openId,
-      lastSignedIn: user.lastSignedIn ?? new Date(),
-      updatedAt: new Date(),
+    };
+    const updateSet: Record<string, unknown> = {};
+
+    const textFields = ["name", "email", "loginMethod"] as const;
+    type TextField = (typeof textFields)[number];
+
+    const assignNullable = (field: TextField) => {
+      const value = user[field];
+      if (value === undefined) return;
+      const normalized = value ?? null;
+      values[field] = normalized;
+      updateSet[field] = normalized;
     };
 
-    if (user.name !== undefined) values.name = user.name ?? null;
-    if (user.email !== undefined) values.email = user.email ?? null;
-    if (user.loginMethod !== undefined) values.loginMethod = user.loginMethod ?? null;
-    if (user.passwordHash !== undefined) values.passwordHash = user.passwordHash ?? null;
+    textFields.forEach(assignNullable);
+
+    if (user.lastSignedIn !== undefined) {
+      values.lastSignedIn = user.lastSignedIn;
+      updateSet.lastSignedIn = user.lastSignedIn;
+    }
     if (user.role !== undefined) {
       values.role = user.role;
+      updateSet.role = user.role;
     } else if (user.openId === ENV.ownerOpenId) {
-      values.role = "admin";
+      values.role = 'admin';
+      updateSet.role = 'admin';
     }
 
-    await db
-      .insert(users)
-      .values(values)
-      .onConflictDoUpdate({
-        target: users.openId,
-        set: {
-          ...(values.name !== undefined ? { name: values.name } : {}),
-          ...(values.email !== undefined ? { email: values.email } : {}),
-          ...(values.loginMethod !== undefined
-            ? { loginMethod: values.loginMethod }
-            : {}),
-          ...(values.passwordHash !== undefined
-            ? { passwordHash: values.passwordHash }
-            : {}),
-          ...(values.role !== undefined ? { role: values.role } : {}),
-          lastSignedIn: values.lastSignedIn,
-          updatedAt: new Date(),
-        },
-      });
+    if (!values.lastSignedIn) {
+      values.lastSignedIn = new Date();
+    }
+
+    if (Object.keys(updateSet).length === 0) {
+      updateSet.lastSignedIn = new Date();
+    }
+
+    await db.insert(users).values(values).onDuplicateKeyUpdate({
+      set: updateSet,
+    });
   } catch (error) {
     console.error("[Database] Failed to upsert user:", error);
     throw error;
@@ -89,29 +84,9 @@ export async function getUserByOpenId(openId: string) {
     return undefined;
   }
 
-  const result = await db
-    .select()
-    .from(users)
-    .where(eq(users.openId, openId))
-    .limit(1);
+  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
 
   return result.length > 0 ? result[0] : undefined;
 }
 
-export async function getUserByEmail(email: string) {
-  const db = await getDb();
-  if (!db) return undefined;
-  const result = await db
-    .select()
-    .from(users)
-    .where(eq(users.email, email))
-    .limit(1);
-  return result.length > 0 ? result[0] : undefined;
-}
-
-export async function getUserById(id: number) {
-  const db = await getDb();
-  if (!db) return undefined;
-  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
-}
+// TODO: add feature queries here as your schema grows.

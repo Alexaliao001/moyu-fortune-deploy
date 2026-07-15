@@ -1,245 +1,192 @@
-/**
- * First-party aggregate analytics (AGENTS.md P0-6).
- * Only event names, deviceId and a small attribution allowlist are persisted.
- */
-import { getUserId } from "./localStorage";
+// 事件追踪工具 - 用于统计用户行为
 
-export type AnalyticsEvent =
-  | "draw"
-  | "share_click"
-  | "card_saved"
-  | "membership_view";
+// 事件类型定义
+export type EventCategory = 
+  | 'fortune'      // 抽签相关
+  | 'share'        // 分享相关
+  | 'membership'   // 会员相关
+  | 'invite'       // 邀请相关
+  | 'pwa'          // PWA 相关
+  | 'engagement';  // 用户互动
 
-export type AnalyticsProps = Record<string, string | number | boolean>;
-
-export interface Attribution {
-  utm_source?: string;
-  utm_medium?: string;
-  utm_campaign?: string;
-  ref?: "card";
+export interface TrackEventParams {
+  category: EventCategory;
+  action: string;
+  label?: string;
+  value?: number;
 }
 
-export interface QueuedEvent {
-  eventId?: string;
-  event: AnalyticsEvent;
-  props?: AnalyticsProps;
-  t: number;
-  deviceId: string;
-}
-type QueuedEventWithId = QueuedEvent & { eventId: string };
-
-const QUEUE_KEY = "moyu_analytics_queue";
-const ATTRIBUTION_KEY = "moyu_attribution";
-const ATTRIBUTION_PARAMS = [
-  "utm_source",
-  "utm_medium",
-  "utm_campaign",
-] as const;
-let fallbackEventCounter = 0;
-
-function hashText(value: string): string {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(36);
+// 检查 Umami 是否可用
+function isUmamiAvailable(): boolean {
+  return typeof window !== 'undefined' && typeof (window as any).umami !== 'undefined';
 }
 
-function legacyEventId(event: QueuedEvent): string {
-  return `legacy-${hashText(
-    JSON.stringify([
-      event.deviceId,
-      event.event,
-      event.t,
-      event.props || {},
-    ])
-  )}`;
-}
+// 追踪事件
+export function trackEvent({ category, action, label, value }: TrackEventParams): void {
+  // 构建事件名称
+  const eventName = `${category}_${action}`;
+  
+  // 构建事件数据
+  const eventData: Record<string, any> = {};
+  if (label) eventData.label = label;
+  if (value !== undefined) eventData.value = value;
 
-function createEventId(): string {
-  const cryptoApi = globalThis.crypto;
-  if (typeof cryptoApi?.randomUUID === "function") {
-    return cryptoApi.randomUUID();
-  }
-  if (typeof cryptoApi?.getRandomValues === "function") {
-    const words = cryptoApi.getRandomValues(new Uint32Array(4));
-    return Array.from(words, word => word.toString(36)).join("-");
-  }
-  fallbackEventCounter += 1;
-  return `fallback-${Date.now().toString(36)}-${fallbackEventCounter.toString(36)}`;
-}
-
-export function ensureAnalyticsEventIds(
-  events: QueuedEvent[]
-): QueuedEventWithId[] {
-  return events.map(event => ({
-    ...event,
-    eventId: event.eventId || legacyEventId(event),
-  }));
-}
-
-function apiBase(): string {
-  const base = (import.meta.env.VITE_MOYU_API_BASE as string | undefined)?.trim();
-  if (base && base !== "undefined") return base.replace(/\/$/, "");
-  return "";
-}
-
-function plausibleDomain(): string | undefined {
-  const d = (import.meta.env.VITE_PLAUSIBLE_DOMAIN as string | undefined)?.trim();
-  return d && d !== "undefined" ? d : undefined;
-}
-
-function safeAttributionValue(value: string | null): string | undefined {
-  const normalized = value?.trim().slice(0, 80);
-  if (
-    !normalized ||
-    !/^[a-zA-Z0-9._~\-\u3400-\u9fff]+$/.test(normalized)
-  ) {
-    return undefined;
-  }
-  return normalized;
-}
-
-/** Parse only the channel fields needed for aggregate attribution reports. */
-export function parseAttribution(href: string, referrer = ""): Attribution {
-  const result: Attribution = {};
-  try {
-    const url = new URL(href);
-    for (const key of ATTRIBUTION_PARAMS) {
-      const value = safeAttributionValue(url.searchParams.get(key));
-      if (value) result[key] = value;
-    }
-    if (url.searchParams.get("ref") === "card") result.ref = "card";
-
-    if (!result.utm_source && referrer) {
-      const referringUrl = new URL(referrer);
-      if (referringUrl.hostname && referringUrl.hostname !== url.hostname) {
-        result.utm_source = referringUrl.hostname.slice(0, 80);
-        result.utm_medium = "referral";
-      }
-    }
-  } catch {
-    // Malformed navigation data is ignored; no full URL is stored.
-  }
-  return result;
-}
-
-function readAttribution(): Attribution {
-  try {
-    return JSON.parse(sessionStorage.getItem(ATTRIBUTION_KEY) || "{}") as Attribution;
-  } catch {
-    return {};
-  }
-}
-
-export function captureAttribution(): Attribution {
-  if (typeof window === "undefined") return {};
-  const current = parseAttribution(window.location.href, document.referrer);
-  const next = { ...readAttribution(), ...current };
-  try {
-    sessionStorage.setItem(ATTRIBUTION_KEY, JSON.stringify(next));
-  } catch {
-    // Private browsing can disable storage; attribution remains best-effort.
-  }
-  return next;
-}
-
-export function buildShareUrl(
-  channel: string,
-  origin = "https://chillworks.ai"
-): string {
-  const url = new URL("/", origin);
-  url.searchParams.set("ref", "card");
-  url.searchParams.set("utm_source", safeAttributionValue(channel) || "card");
-  url.searchParams.set("utm_medium", "share");
-  url.searchParams.set("utm_campaign", "organic_card");
-  return url.toString();
-}
-
-function enqueue(event: AnalyticsEvent, props?: AnalyticsProps) {
-  try {
-    const raw = localStorage.getItem(QUEUE_KEY);
-    const q: QueuedEvent[] = raw ? JSON.parse(raw) : [];
-    q.push({
-      eventId: createEventId(),
-      event,
-      props,
-      t: Date.now(),
-      deviceId: getUserId(),
-    });
-    localStorage.setItem(QUEUE_KEY, JSON.stringify(q.slice(-50)));
-  } catch {
-    /* ignore */
-  }
-}
-
-export async function flushAnalyticsQueue() {
-  const base = apiBase();
-  if (!base || typeof navigator === "undefined" || !navigator.onLine) return;
-  let q: QueuedEvent[] = [];
-  try {
-    const raw = localStorage.getItem(QUEUE_KEY);
-    q = raw ? JSON.parse(raw) : [];
-  } catch {
-    return;
-  }
-  if (!q.length) return;
-  const prepared = ensureAnalyticsEventIds(q);
-  try {
-    localStorage.setItem(QUEUE_KEY, JSON.stringify(prepared));
-  } catch {
-    /* deterministic legacy IDs still make this retry-safe */
-  }
-  try {
-    const res = await fetch(`${base}/api/events`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ events: prepared }),
-      mode: "cors",
-      keepalive: true,
-    });
-    if (res.ok) localStorage.removeItem(QUEUE_KEY);
-  } catch {
-    /* keep queue */
-  }
-}
-
-export function track(event: AnalyticsEvent, props?: AnalyticsProps): void {
-  const mergedProps =
-    typeof window === "undefined"
-      ? props
-      : { ...captureAttribution(), ...(props || {}) };
-  enqueue(event, mergedProps);
-
-  const domain = plausibleDomain();
-  if (domain && typeof window !== "undefined") {
+  // 发送到 Umami
+  if (isUmamiAvailable()) {
     try {
-      const w = window as unknown as {
-        plausible?: (n: string, o?: { props?: Record<string, unknown> }) => void;
-      };
-      w.plausible?.(event, mergedProps ? { props: mergedProps } : undefined);
-    } catch {
-      /* ignore */
+      (window as any).umami.track(eventName, eventData);
+    } catch (e) {
+      console.warn('Analytics tracking failed:', e);
     }
   }
 
-  void flushAnalyticsQueue();
+  // 开发环境下打印日志
+  if (import.meta.env.DEV) {
+    console.log('[Analytics]', eventName, eventData);
+  }
 }
 
-/** Restore attribution/queue and inject Plausible only when configured. */
-export function initAnalytics(): void {
-  if (typeof document === "undefined") return;
-  captureAttribution();
-  void flushAnalyticsQueue();
-  window.addEventListener("online", () => void flushAnalyticsQueue());
+// 预定义的事件追踪函数
 
-  const domain = plausibleDomain();
-  if (!domain || document.getElementById("plausible-script")) return;
-  const script = document.createElement("script");
-  script.id = "plausible-script";
-  script.defer = true;
-  script.dataset.domain = domain;
-  script.src = "https://plausible.io/js/script.js";
-  document.head.appendChild(script);
-}
+// 抽签相关
+export const trackFortuneDraw = (level: string, percent: number) => {
+  trackEvent({
+    category: 'fortune',
+    action: 'draw',
+    label: level,
+    value: percent,
+  });
+};
+
+export const trackFortuneRetry = () => {
+  trackEvent({
+    category: 'fortune',
+    action: 'retry',
+  });
+};
+
+// 分享相关
+export const trackShare = (platform: string) => {
+  trackEvent({
+    category: 'share',
+    action: 'click',
+    label: platform,
+  });
+};
+
+export const trackSharePoster = () => {
+  trackEvent({
+    category: 'share',
+    action: 'poster_generate',
+  });
+};
+
+export const trackShareCopy = () => {
+  trackEvent({
+    category: 'share',
+    action: 'copy_text',
+  });
+};
+
+// 会员相关
+export const trackMembershipView = () => {
+  trackEvent({
+    category: 'membership',
+    action: 'page_view',
+  });
+};
+
+export const trackMembershipClick = (plan: string) => {
+  trackEvent({
+    category: 'membership',
+    action: 'plan_click',
+    label: plan,
+  });
+};
+
+export const trackPaymentStart = (plan: string, amount: number) => {
+  trackEvent({
+    category: 'membership',
+    action: 'payment_start',
+    label: plan,
+    value: amount,
+  });
+};
+
+export const trackPaymentSuccess = (plan: string) => {
+  trackEvent({
+    category: 'membership',
+    action: 'payment_success',
+    label: plan,
+  });
+};
+
+// 邀请相关
+export const trackInviteView = () => {
+  trackEvent({
+    category: 'invite',
+    action: 'page_view',
+  });
+};
+
+export const trackInviteCopy = () => {
+  trackEvent({
+    category: 'invite',
+    action: 'code_copy',
+  });
+};
+
+export const trackInviteShare = (platform: string) => {
+  trackEvent({
+    category: 'invite',
+    action: 'share',
+    label: platform,
+  });
+};
+
+// PWA 相关
+export const trackPWAPromptShow = () => {
+  trackEvent({
+    category: 'pwa',
+    action: 'prompt_show',
+  });
+};
+
+export const trackPWAInstall = () => {
+  trackEvent({
+    category: 'pwa',
+    action: 'install',
+  });
+};
+
+export const trackPWADismiss = () => {
+  trackEvent({
+    category: 'pwa',
+    action: 'dismiss',
+  });
+};
+
+// 用户互动
+export const trackAvatarSelect = (avatar: string) => {
+  trackEvent({
+    category: 'engagement',
+    action: 'avatar_select',
+    label: avatar,
+  });
+};
+
+export const trackLanguageSwitch = (language: string) => {
+  trackEvent({
+    category: 'engagement',
+    action: 'language_switch',
+    label: language,
+  });
+};
+
+export const trackSoundToggle = (enabled: boolean) => {
+  trackEvent({
+    category: 'engagement',
+    action: 'sound_toggle',
+    label: enabled ? 'on' : 'off',
+  });
+};

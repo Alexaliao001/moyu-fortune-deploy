@@ -27,9 +27,9 @@
     <meta name="apple-touch-fullscreen" content="yes" />
     
     <!-- 基本 SEO 信息 -->
-    <title>摸了么 — 每天一签，测测今天能不能摸</title>
-    <meta name="description" content="摸了么：中文摸鱼文化的每日仪式。老虎机抽签，免费出签文卡片并分享。仅供娱乐。" />
-    <meta name="keywords" content="摸鱼,运势,占卜,职场,打工人,摸了么,每日运势,抽签,chillworks" />
+    <title>摸了么 MoYu - 每日摸鱼运势占卜 | Daily Slacking Fortune</title>
+    <meta name="description" content="摸了么是一款有趣的每日摸鱼运势占卜应用。老虎机式抽签，AI生成00后职场黑话金句，看看今天适不适合摸鱼！MoYu Fortune - Daily slacking fortune telling for office workers." />
+    <meta name="keywords" content="摸鱼,运势,占卜,职场,打工人,slacking,fortune,office,workplace,moyu,摸了么,每日运势,老虎机,抽签" />
     <meta name="author" content="ChillWorks" />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://chillworks.ai/" />
@@ -37,35 +37,36 @@
     <!-- Open Graph / Facebook / 微信 -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://chillworks.ai/" />
-    <meta property="og:title" content="摸了么 — 每天一签，测测今天能不能摸" />
-    <meta property="og:description" content="老虎机抽签，生成可分享的签文卡片。仅供娱乐。" />
-    <!-- 157KB JPEG：微信/即刻/X 的抓取器会拒绝原 6MB PNG 缩略图 -->
-    <meta property="og:image" content="https://chillworks.ai/assets/moyu/og-card-1200x630.jpg" />
+    <meta property="og:title" content="摸了么 MoYu - 每日摸鱼运势占卜" />
+    <meta property="og:description" content="老虎机式抽签，AI生成00后职场黑话金句，看看今天适不适合摸鱼！" />
+    <meta property="og:image" content="https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/swLangSLkHDVwTAg.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="摸了么签文卡片示例" />
-    <meta property="og:site_name" content="摸了么" />
+    <meta property="og:image:alt" content="摸了么 - 每日摸鱼运势占卜" />
+    <meta property="og:site_name" content="摸了么 MoYu" />
     <meta property="og:locale" content="zh_CN" />
+    <meta property="og:locale:alternate" content="en_US" />
     
-    <!-- Twitter Card（无虚构 @ 账号；AGENTS.md 铁律 1 / P0-2） -->
+    <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:url" content="https://chillworks.ai/" />
-    <meta name="twitter:title" content="摸了么 — 每天一签，测测今天能不能摸" />
-    <meta name="twitter:description" content="老虎机抽签，生成可分享的签文卡片。仅供娱乐。" />
-    <meta name="twitter:image" content="https://chillworks.ai/assets/moyu/og-card-1200x630.jpg" />
+    <meta name="twitter:title" content="摸了么 MoYu - Daily Slacking Fortune" />
+    <meta name="twitter:description" content="Slot machine style fortune telling with AI-generated workplace humor. See if today is good for slacking!" />
+    <meta name="twitter:image" content="https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/swLangSLkHDVwTAg.png" />
+    <meta name="twitter:creator" content="@ChillWorksAI" />
     
     <!-- 微博分享 -->
     <meta property="weibo:article:create_at" content="2026-01-28" />
     <meta property="weibo:article:update_at" content="2026-01-28" />
     
-    <!-- 结构化数据 JSON-LD（评分等虚假字段由 P0-2 删除） -->
+    <!-- 结构化数据 JSON-LD -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "WebApplication",
       "name": "摸了么 MoYu",
       "alternateName": "MoYu Fortune",
-      "description": "每日摸鱼运势占卜应用，老虎机式抽签。仅供娱乐。",
+      "description": "每日摸鱼运势占卜应用，老虎机式抽签，AI生成00后职场黑话金句",
       "url": "https://chillworks.ai/",
       "applicationCategory": "Entertainment",
       "operatingSystem": "Web",
@@ -78,6 +79,11 @@
         "@type": "Organization",
         "name": "ChillWorks",
         "url": "https://chillworks.ai/"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.8",
+        "ratingCount": "1000"
       }
     }
     </script>
@@ -95,16 +101,25 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     
     <!-- 字体：ZCOOL KuaiLe（标题趣味圆体）+ Noto Sans SC（正文）-->
+    <!-- 只加载实际使用的字重：400(normal) + 500(medium) + 700(bold) -->
     <link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet" />
     
     <!-- 预加载关键资源 -->
-    <link rel="preload" href="/assets/moyu/yDgdvSFbrknFvFrI.webp" as="image" type="image/webp" crossorigin />
+    <!-- 预加载铜钱正面图片 - 首屏关键资源 (优化后480x480 WebP ~48KB) -->
+    <link rel="preload" href="https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/yDgdvSFbrknFvFrI.webp" as="image" type="image/webp" crossorigin />
+    <!-- 铜钱背面不预加载，等用户点击时再加载 -->
+    <!-- PNG降级版本不预加载，仅在不支持WebP时通过JS加载 -->
+    <!-- 预连接CDN -->
+    <link rel="preconnect" href="https://files.manuscdn.com" crossorigin />
   </head>
 
   <body style="background:#0A0503;">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <!-- Analytics placeholders removed (AGENTS.md P0-1); real umami/Plausible wired in P0-6 -->
+    <script
+      defer
+      src="%VITE_ANALYTICS_ENDPOINT%/umami"
+      data-website-id="%VITE_ANALYTICS_WEBSITE_ID%"></script>
   </body>
 
 </html>

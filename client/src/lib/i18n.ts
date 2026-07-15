@@ -15,15 +15,16 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
-    lng: 'zh',
     fallbackLng: 'zh',
     supportedLngs: ['zh', 'en'],
     
     detection: {
-      // P1-4 中文优先：不跟浏览器英文误切；显式 ?lang=/localStorage 才切英文
-      order: ['querystring', 'localStorage'],
+      // Order of language detection
+      order: ['querystring', 'localStorage', 'navigator', 'htmlTag'],
+      // Keys to look for
       lookupQuerystring: 'lang',
       lookupLocalStorage: 'moyu-language',
+      // Cache user language
       caches: ['localStorage'],
     },
 

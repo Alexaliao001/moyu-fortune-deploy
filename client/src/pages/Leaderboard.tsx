@@ -1,13 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/_core/hooks/useAuth';
 import PageLayout from '@/components/PageLayout';
 import GlassCard from '@/components/GlassCard';
 import { useTranslation } from 'react-i18next';
 import { Flame, Star, Users, Dices, BarChart3, Calendar, Smile, Moon, Inbox } from 'lucide-react';
-import { hasLightApi, lightGetLeaderboard } from '@/lib/lightApi';
-import { isStaticMode, isFullBackend } from '@/lib/staticMode';
-import { getUserId } from '@/lib/localStorage';
 
 type Tab = 'streak' | 'weekly';
 
@@ -52,119 +49,22 @@ export default function Leaderboard() {
   const { user } = useAuth();
   const { i18n } = useTranslation();
   const isEn = i18n.language === 'en' || i18n.language.startsWith('en');
-  const light = hasLightApi();
-  const staticMode = isStaticMode();
-  const full = isFullBackend();
-  const useTrpc = !staticMode && !light;
 
-  const [lightLoading, setLightLoading] = useState(light);
-  const [lightBoard, setLightBoard] = useState<Awaited<
-    ReturnType<typeof lightGetLeaderboard>
-  > | null>(null);
-
-  useEffect(() => {
-    if (!light) return;
-    let cancelled = false;
-    setLightLoading(true);
-    lightGetLeaderboard(30)
-      .then(board => {
-        if (!cancelled) setLightBoard(board);
-      })
-      .finally(() => {
-        if (!cancelled) setLightLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [light]);
-
-  const { data: streakData, isLoading: streakLoading } = trpc.leaderboard.streakRanking.useQuery(
-    { limit: 30 },
-    { enabled: useTrpc }
-  );
-  const { data: weeklyData, isLoading: weeklyLoading } = trpc.leaderboard.weeklyBestRanking.useQuery(
-    { limit: 30 },
-    { enabled: useTrpc }
-  );
-  const deviceIdForMe = getUserId();
-  const { data: myData } = trpc.leaderboard.myRanking.useQuery(
-    { deviceId: deviceIdForMe },
-    { enabled: useTrpc }
-  );
-  const { data: globalStats } = trpc.leaderboard.globalStats.useQuery(undefined, {
-    enabled: useTrpc,
-  });
-
-  const deviceId = getUserId();
-  const streakRankings = light
-    ? (lightBoard?.streak || []).map(r => ({
-        rank: r.rank,
-        userId: r.deviceId,
-        name: r.name,
-        streak: r.streak,
-      }))
-    : streakData?.rankings || [];
-  const weeklyRankings = light
-    ? (lightBoard?.weekly || []).map(r => ({
-        rank: r.rank,
-        userId: r.deviceId,
-        name: r.name,
-        bestPercent: r.bestPercent,
-        bestLevel: r.level,
-        emoji: r.emoji,
-        totalDraws: 1,
-      }))
-    : weeklyData?.rankings || [];
-  const lightGlobal = lightBoard?.global;
-  const myLight = light
-    ? {
-        streak: lightBoard?.streak.find(r => r.deviceId === deviceId)?.streak || 0,
-        weeklyBest: lightBoard?.weekly.find(r => r.deviceId === deviceId)
-          ? {
-              level: lightBoard.weekly.find(r => r.deviceId === deviceId)!.level,
-              percent: lightBoard.weekly.find(r => r.deviceId === deviceId)!.bestPercent,
-            }
-          : null,
-        totalDraws: 0,
-      }
-    : null;
+  const { data: streakData, isLoading: streakLoading } = trpc.leaderboard.streakRanking.useQuery({ limit: 30 });
+  const { data: weeklyData, isLoading: weeklyLoading } = trpc.leaderboard.weeklyBestRanking.useQuery({ limit: 30 });
+  const { data: myData } = trpc.leaderboard.myRanking.useQuery(undefined, { enabled: true });
+  const { data: globalStats } = trpc.leaderboard.globalStats.useQuery();
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: 'streak', label: isEn ? 'Streak Kings' : '连续签到榜', icon: <Flame className="w-3.5 h-3.5" /> },
     { key: 'weekly', label: isEn ? 'Weekly Best' : '本周最佳榜', icon: <Star className="w-3.5 h-3.5" /> },
   ];
 
-  const showMy = light ? myLight : myData;
-  const showGlobal = light
-    ? lightGlobal
-      ? {
-          totalUsers: lightGlobal.uniqueDevices,
-          totalDraws: lightGlobal.totalDraws,
-          avgPercent: 0,
-        }
-      : null
-    : globalStats;
-
   return (
     <PageLayout title={isEn ? 'Leaderboard' : '排行榜'}>
       <div className="space-y-4 animate-fadeIn">
-        {full && (
-          <p className="text-white/30 text-[11px] px-1">
-            {isEn
-              ? 'Live rankings'
-              : '实时排行'}
-          </p>
-        )}
-        {staticMode && !light && !full && (
-          <p className="text-white/30 text-[11px] px-1">
-            {isEn
-              ? 'Rankings unavailable offline.'
-              : '离线时暂无排行数据。'}
-          </p>
-        )}
-
         {/* 我的排名卡片 */}
-        {user && showMy && (
+        {user && myData && (
           <GlassCard accent="gold" className="p-4">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 rounded-full flex items-center justify-center"
@@ -179,19 +79,19 @@ export default function Leaderboard() {
             <div className="grid grid-cols-3 gap-3">
               <div className="text-center p-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.05)' }}>
                 <div className="text-xl font-bold" style={{ color: '#fbbf24' }}>
-                  {showMy.streak}
+                  {myData.streak}
                 </div>
                 <div className="text-white/40 text-[10px] mt-0.5">{isEn ? 'Day Streak' : '连续签到'}</div>
               </div>
               <div className="text-center p-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                <div className="text-xl font-bold" style={{ color: showMy.weeklyBest ? getLevelColor(showMy.weeklyBest.level) : '#6b7280' }}>
-                  {showMy.weeklyBest?.level ? (isEn ? ({'大吉':'Great','中吉':'Good','小吉':'Fair','末吉':'Minor','平':'Neutral','小凶':'Minor Bad','凶':'Bad'} as Record<string, string>)[showMy.weeklyBest.level] || showMy.weeklyBest.level : showMy.weeklyBest.level) : (isEn ? '-' : '—')}
+                <div className="text-xl font-bold" style={{ color: myData.weeklyBest ? getLevelColor(myData.weeklyBest.level) : '#6b7280' }}>
+                  {myData.weeklyBest?.level ? (isEn ? ({'大吉':'Great','中吉':'Good','小吉':'Fair','末吉':'Minor','平':'Neutral','小凶':'Minor Bad','凶':'Bad'} as Record<string, string>)[myData.weeklyBest.level] || myData.weeklyBest.level : myData.weeklyBest.level) : (isEn ? '-' : '—')}
                 </div>
                 <div className="text-white/40 text-[10px] mt-0.5">{isEn ? 'Weekly Best' : '本周最佳'}</div>
               </div>
               <div className="text-center p-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.05)' }}>
                 <div className="text-xl font-bold text-white/80">
-                  {'totalDraws' in showMy ? showMy.totalDraws : 0}
+                  {myData.totalDraws}
                 </div>
                 <div className="text-white/40 text-[10px] mt-0.5">{isEn ? 'Total Draws' : '总抽签数'}</div>
               </div>
@@ -200,26 +100,22 @@ export default function Leaderboard() {
         )}
 
         {/* 全站统计 */}
-        {showGlobal && (
+        {globalStats && (
           <div className="flex items-center justify-center gap-4 py-2">
             <div className="flex items-center gap-1.5 text-white/30 text-xs">
               <Users className="w-3 h-3" />
-              <span>{showGlobal.totalUsers} {isEn ? 'users' : '用户'}</span>
+              <span>{globalStats.totalUsers} {isEn ? 'users' : '用户'}</span>
             </div>
             <div className="w-px h-3" style={{ background: 'rgba(255,255,255,0.1)' }} />
             <div className="flex items-center gap-1.5 text-white/30 text-xs">
               <Dices className="w-3 h-3" />
-              <span>{showGlobal.totalDraws} {isEn ? 'draws' : '次抽签'}</span>
+              <span>{globalStats.totalDraws} {isEn ? 'draws' : '次抽签'}</span>
             </div>
-            {'avgPercent' in showGlobal && showGlobal.avgPercent > 0 && (
-              <>
-                <div className="w-px h-3" style={{ background: 'rgba(255,255,255,0.1)' }} />
-                <div className="flex items-center gap-1.5 text-white/30 text-xs">
-                  <BarChart3 className="w-3 h-3" />
-                  <span>{isEn ? 'Avg' : '平均'} {showGlobal.avgPercent}%</span>
-                </div>
-              </>
-            )}
+            <div className="w-px h-3" style={{ background: 'rgba(255,255,255,0.1)' }} />
+            <div className="flex items-center gap-1.5 text-white/30 text-xs">
+              <BarChart3 className="w-3 h-3" />
+              <span>{isEn ? 'Avg' : '平均'} {globalStats.avgPercent}%</span>
+            </div>
           </div>
         )}
 
@@ -246,17 +142,17 @@ export default function Leaderboard() {
         <GlassCard accent="none" className="overflow-hidden">
           {activeTab === 'streak' ? (
             <StreakList 
-              rankings={streakRankings} 
-              isLoading={light ? lightLoading : streakLoading}
-              currentUserId={light ? deviceId : user?.id}
+              rankings={streakData?.rankings || []} 
+              isLoading={streakLoading}
+              currentUserId={user?.id}
               isEn={isEn}
             />
           ) : (
             <WeeklyList 
-              rankings={weeklyRankings} 
-              isLoading={light ? lightLoading : weeklyLoading}
+              rankings={weeklyData?.rankings || []} 
+              isLoading={weeklyLoading}
               weekRange={weeklyData?.weekRange}
-              currentUserId={light ? deviceId : user?.id}
+              currentUserId={user?.id}
               isEn={isEn}
             />
           )}
@@ -278,7 +174,7 @@ export default function Leaderboard() {
 function StreakList({ rankings, isLoading, currentUserId, isEn }: {
   rankings: any[];
   isLoading: boolean;
-  currentUserId?: string | number;
+  currentUserId?: number;
   isEn: boolean;
 }) {
   if (isLoading) {
@@ -355,7 +251,7 @@ function WeeklyList({ rankings, isLoading, weekRange, currentUserId, isEn }: {
   rankings: any[];
   isLoading: boolean;
   weekRange?: { start: string; end: string } | null;
-  currentUserId?: string | number;
+  currentUserId?: number;
   isEn: boolean;
 }) {
   if (isLoading) {

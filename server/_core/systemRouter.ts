@@ -1,30 +1,17 @@
 import { z } from "zod";
 import { notifyOwner } from "./notification";
 import { adminProcedure, publicProcedure, router } from "./trpc";
-import { ENV } from "./env";
-import { getDb } from "../db";
 
 export const systemRouter = router({
   health: publicProcedure
     .input(
-      z
-        .object({
-          timestamp: z.number().min(0).optional(),
-        })
-        .optional()
+      z.object({
+        timestamp: z.number().min(0, "timestamp cannot be negative"),
+      })
     )
-    .query(async () => {
-      const db = await getDb();
-      return {
-        ok: true,
-        service: "moyu-fortune",
-        version: "path-c-1.0",
-        database: Boolean(db),
-        stripe: Boolean(ENV.stripeSecretKey),
-        stripeWebhook: Boolean(ENV.stripeWebhookSecret),
-        llm: Boolean(ENV.forgeApiKey),
-      };
-    }),
+    .query(() => ({
+      ok: true,
+    })),
 
   notifyOwner: adminProcedure
     .input(

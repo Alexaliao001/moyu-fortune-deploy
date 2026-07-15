@@ -19,7 +19,7 @@ function StreakBadgeInner({ streak, className = '' }: StreakBadgeProps) {
 
   // 根据连续天数显示不同等级
   const getLevel = () => {
-    if (streak >= 30) return { label: isEnglish ? 'Veteran' : '摸鱼老手', color: '#FFD700', glow: 'rgba(255,215,0,0.3)' };
+    if (streak >= 30) return { label: isEnglish ? 'Master' : '摸鱼大师', color: '#FFD700', glow: 'rgba(255,215,0,0.3)' };
     if (streak >= 14) return { label: isEnglish ? 'Pro' : '摸鱼达人', color: '#FF8C00', glow: 'rgba(255,140,0,0.25)' };
     if (streak >= 7) return { label: isEnglish ? 'Skilled' : '摸鱼能手', color: '#FF6B35', glow: 'rgba(255,107,53,0.2)' };
     if (streak >= 3) return { label: isEnglish ? 'Rookie' : '摸鱼新手', color: '#FFB74D', glow: 'rgba(255,183,77,0.15)' };

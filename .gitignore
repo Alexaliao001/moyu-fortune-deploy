@@ -3,7 +3,6 @@
 .pnpm-store/
 
 # Build outputs
-dist/
 build/
 *.dist
 
@@ -106,4 +105,3 @@ temp/
 *.sqlite
 *.sqlite3
 .project-config.json
-data/

@@ -1,6 +1,7 @@
-// 摸鱼猫 MoYu Cat IP 素材配置（P0-5 自托管）
+// 摸鱼猫 MoYu Cat IP 素材配置
+// 所有图片已优化：2048x2048 → 256x256, WebP优先 (99.8%压缩)
 
-const BASE = '/assets/moyu/';
+const BASE = 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/';
 const _wp = typeof document !== 'undefined' && document.createElement('canvas').toDataURL('image/webp').indexOf('data:image/webp') === 0;
 const u = (webp: string, png: string) => BASE + (_wp ? webp : png);
 

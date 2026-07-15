@@ -1,11 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import gsap from 'gsap';
-import { ArrowLeft, Copy, Download, Trophy, Share2, Cat } from 'lucide-react';
+import { Copy, Download, RefreshCw, Trophy } from 'lucide-react';
 import { toast } from 'sonner';
-import { buildShareUrl, track } from '@/lib/analytics';
-import { downloadDataUrl } from '@/lib/shareCard';
-import { getActiveGoldenWindow, getNextGoldenWindow } from '@/lib/goldenWindows';
 
 interface FortuneResultProps {
   level: string;
@@ -18,12 +15,7 @@ interface FortuneResultProps {
   visible: boolean;
   isLoadingSlogan?: boolean;
   catUrl?: string;
-  onBack?: () => void;
-  /** Open the P1-1 copper share card (PosterGenerator) */
-  onOpenCard?: () => void;
-  /** Open avatar drawer from result card (not auto on first draw) */
-  onOpenAvatar?: () => void;
-  streak?: number;
+  onTryAgain?: () => void;
 }
 
 const levelConfig: Record<string, { titleEn: string; accent: string; accentBg: string; glow: string; ring: string }> = {
@@ -105,14 +97,10 @@ export default function FortuneResult({
   emoji,
   percent,
   message,
-  suggestedTime,
   beatPercent,
   visible,
   isLoadingSlogan = false,
-  onBack,
-  onOpenCard,
-  onOpenAvatar,
-  streak = 0,
+  onTryAgain,
 }: FortuneResultProps) {
   const { t, i18n } = useTranslation();
   const isEnglish = i18n.language === 'en' || i18n.language.startsWith('en');
@@ -122,41 +110,32 @@ export default function FortuneResult({
 
   const config = levelConfig[level] || levelConfig['小吉'];
   const titleDisplay = isEnglish ? config.titleEn : level;
-  const showPercent = Number.isFinite(percent) && percent > 0;
 
   useEffect(() => {
-    if (!visible || !cardRef.current) return;
-
-    gsap.fromTo(
-      cardRef.current,
-      { scale: 0.85, opacity: 0, y: 20 },
-      { scale: 1, opacity: 1, y: 0, duration: 0.45, ease: 'back.out(1.7)' }
-    );
-
-    if (!showPercent || !percentRef.current) return;
-
-    percentRef.current.textContent = `${Math.round(percent)}%`;
-    const counter = { val: 0 };
-    const tween = gsap.to(counter, {
-      val: percent,
-      duration: 1.2,
-      delay: 0.3,
-      ease: 'power2.out',
-      onUpdate: () => {
-        if (percentRef.current) {
-          percentRef.current.textContent = Math.round(counter.val) + '%';
-        }
-      },
-      onComplete: () => {
-        if (percentRef.current) {
-          percentRef.current.textContent = `${Math.round(percent)}%`;
-        }
-      },
-    });
-    return () => {
-      tween.kill();
-    };
-  }, [visible, percent, showPercent]);
+    if (visible && cardRef.current) {
+      gsap.fromTo(
+        cardRef.current,
+        { scale: 0.85, opacity: 0, y: 20 },
+        { scale: 1, opacity: 1, y: 0, duration: 0.45, ease: 'back.out(1.7)' }
+      );
+      
+      // 百分比数字滚动动画
+      if (percentRef.current) {
+        const counter = { val: 0 };
+        gsap.to(counter, {
+          val: percent,
+          duration: 1.2,
+          delay: 0.3,
+          ease: 'power2.out',
+          onUpdate: () => {
+            if (percentRef.current) {
+              percentRef.current.textContent = Math.round(counter.val) + '%';
+            }
+          },
+        });
+      }
+    }
+  }, [visible, percent]);
 
   const getShareText = () => {
     if (isEnglish) {
@@ -166,39 +145,31 @@ export default function FortuneResult({
   };
 
   const copyResult = () => {
-    const text = `${getShareText()} ${buildShareUrl('copy')}`;
+    const text = getShareText();
     navigator.clipboard.writeText(text).then(() => {
-      track('share_click', { channel: 'copy' });
       toast.success(isEnglish ? 'Copied! Share it now!' : '已复制，快去分享吧！');
     });
   };
 
   const shareToWeibo = () => {
-    track('share_click', { channel: 'weibo' });
     const text = encodeURIComponent(
       isEnglish
         ? `🐱 Today's Slacking Fortune: ${titleDisplay} ${emoji} Slacking Index: ${percent}% ${message} #SlackingFortune #WorkLifeBalance`
         : `🐱 今日摸鱼运势：${level} ${emoji} 摸鱼指数：${percent}% ${message} #摸鱼运势# #打工人#`
     );
-    const url = encodeURIComponent(buildShareUrl('weibo'));
+    const url = encodeURIComponent(window.location.origin);
     window.open(`https://service.weibo.com/share/share.php?title=${text}&url=${url}`, '_blank');
   };
 
   const shareToX = () => {
-    track('share_click', { channel: 'x' });
     const text = encodeURIComponent(
       `🐱 Today's Slacking Fortune: ${titleDisplay} ${emoji}\nSlacking Index: ${percent}%\n${message}\n\n#SlackingFortune #WorkLifeBalance`
     );
-    const url = encodeURIComponent(buildShareUrl('x'));
+    const url = encodeURIComponent(window.location.origin);
     window.open(`https://twitter.com/intent/tweet?text=${text}&url=${url}`, '_blank');
   };
 
   const shareToWeChat = () => {
-    track('share_click', { channel: 'wechat' });
-    if (onOpenCard) {
-      onOpenCard();
-      return;
-    }
     toast.info(isEnglish ? 'Take a screenshot to share on WeChat' : '请截图后分享到微信朋友圈', {
       description: isEnglish ? 'Long press to save image' : '长按图片可保存到相册',
       duration: 3000,
@@ -206,22 +177,19 @@ export default function FortuneResult({
   };
 
   const shareToWhatsApp = () => {
-    track('share_click', { channel: 'whatsapp' });
-    const text = encodeURIComponent(getShareText() + ' ' + buildShareUrl('whatsapp'));
+    const text = encodeURIComponent(getShareText() + ' ' + window.location.origin);
     window.open(`https://wa.me/?text=${text}`, '_blank');
   };
 
   const shareToTelegram = () => {
-    track('share_click', { channel: 'telegram' });
     const text = encodeURIComponent(getShareText());
-    const url = encodeURIComponent(buildShareUrl('telegram'));
+    const url = encodeURIComponent(window.location.origin);
     window.open(`https://t.me/share/url?url=${url}&text=${text}`, '_blank');
   };
 
   const shareToQQ = () => {
-    track('share_click', { channel: 'qq' });
     const text = encodeURIComponent(getShareText());
-    const url = encodeURIComponent(buildShareUrl('qq'));
+    const url = encodeURIComponent(window.location.origin);
     window.open(`https://connect.qq.com/widget/shareqq/index.html?url=${url}&title=${text}`, '_blank');
   };
 
@@ -235,11 +203,10 @@ export default function FortuneResult({
         scale: 2,
         useCORS: true,
       });
-      const dataUrl = canvas.toDataURL('image/png');
-      downloadDataUrl(
-        dataUrl,
-        `${isEnglish ? 'MoYu-Fortune' : '摸鱼运势'}-${level}-${percent}%.png`
-      );
+      const link = document.createElement('a');
+      link.download = `${isEnglish ? 'MoYu-Fortune' : '摸鱼运势'}-${level}-${percent}%.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
       toast.success(isEnglish ? 'Image saved!' : '图片已保存!');
     } catch (err) {
       console.error('Save image failed:', err);
@@ -298,8 +265,7 @@ export default function FortuneResult({
             {titleDisplay}
           </h2>
           
-          {/* 百分比 — 0 / 无效值不渲染「0%」 */}
-          {showPercent && (
+          {/* 百分比 */}
           <div className="flex items-center justify-center gap-2 relative z-10">
             <span 
               ref={percentRef}
@@ -309,10 +275,9 @@ export default function FortuneResult({
                 textShadow: '0 3px 10px rgba(0,0,0,0.2)',
               }}
             >
-              {Math.round(percent)}%
+              0%
             </span>
           </div>
-          )}
         </div>
       </div>
 
@@ -335,33 +300,7 @@ export default function FortuneResult({
         )}
       </div>
 
-      {/* P1-3: 黄金时段折进结果页 */}
-      {(() => {
-        const active = getActiveGoldenWindow();
-        const next = getNextGoldenWindow();
-        const win = active || next;
-        if (!win) return null;
-        return (
-          <div className="text-center text-[11px] text-amber-200/55">
-            {active
-              ? (isEnglish
-                  ? `Golden window now: ${win.labelEn} (${win.start}–${win.end}) · tip ${suggestedTime}`
-                  : `此刻黄金窗：${win.label}（${win.start}–${win.end}）· 建议摸 ${suggestedTime}`)
-              : (isEnglish
-                  ? `Next window: ${win.labelEn} ${win.start} · tip ${suggestedTime}`
-                  : `下一黄金窗：${win.label} ${win.start} · 建议摸 ${suggestedTime}`)}
-          </div>
-        );
-      })()}
-
-      {streak > 0 && (
-        <div className="text-center text-[11px] text-amber-300/70">
-          {isEnglish ? `🔥 ${streak}-day streak` : `🔥 连续抽签 ${streak} 天`}
-        </div>
-      )}
-
-      {/* 真实击败百分比：无可靠群体数据时不展示（AGENTS.md 铁律 1） */}
-      {beatPercent > 0 && (
+      {/* 打败打工人 */}
       <div className="flex justify-center">
         <div 
           className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full"
@@ -374,13 +313,12 @@ export default function FortuneResult({
           <Trophy className="w-4 h-4 text-amber-400" />
           <span className="text-white/70 text-[12px]">
             {isEnglish 
-              ? <>Beat <span className="font-bold" style={{ color: config.accent }}>{beatPercent}%</span> of today's draws</>
-              : <>今日击败 <span className="font-bold" style={{ color: config.accent }}>{beatPercent}%</span> 摸友</>
+              ? <>Beat <span className="font-bold" style={{ color: config.accent }}>{beatPercent}%</span> of workers</>
+              : <>打败了 <span className="font-bold" style={{ color: config.accent }}>{beatPercent}%</span> 的打工人</>
             }
           </span>
         </div>
       </div>
-      )}
 
       {/* 分享按钮 - 按语言/地区显示不同渠道 */}
       <div className="flex justify-center gap-5 pt-0.5">
@@ -416,72 +354,22 @@ export default function FortuneResult({
         ))}
       </div>
 
-      {/* 操作按钮 — 两字标签 + 竖排，375px 单行无断行 */}
-      <div className="flex justify-center items-stretch gap-2 w-full max-w-[360px] mx-auto">
-        {(
-          [
-            onOpenCard
-              ? {
-                  key: 'card',
-                  onClick: onOpenCard,
-                  icon: <Share2 className="w-4 h-4" />,
-                  label: isEnglish ? 'Card' : '卡片',
-                  aria: isEnglish ? 'Fortune card' : '签文卡片',
-                  primary: true,
-                }
-              : null,
-            onOpenAvatar
-              ? {
-                  key: 'avatar',
-                  onClick: onOpenAvatar,
-                  icon: <Cat className="w-4 h-4" />,
-                  label: isEnglish ? 'Avatar' : '头像',
-                  aria: isEnglish ? 'Change avatar' : '换头像',
-                  primary: false,
-                }
-              : null,
-            {
-              key: 'save',
-              onClick: handleSaveImage,
-              icon: <Download className="w-4 h-4" />,
-              label: isEnglish ? 'Save' : '截图',
-              aria: isEnglish ? 'Save screenshot' : '快存截图',
-              primary: false,
-            },
-            {
-              key: 'back',
-              onClick: onBack,
-              icon: <ArrowLeft className="w-4 h-4" />,
-              label: isEnglish ? 'Back' : '返回',
-              aria: isEnglish ? 'Back to home' : '返回主页',
-              primary: false,
-            },
-          ] as const
-        )
-          .filter((item): item is NonNullable<typeof item> => item != null)
-          .map(item => (
-            <button
-              key={item.key}
-              type="button"
-              onClick={item.onClick}
-              aria-label={item.aria}
-              className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-1 py-2.5 px-1 rounded-xl text-[11px] font-bold whitespace-nowrap active:scale-[0.98] transition-transform ${
-                item.primary ? '' : 'btn-glass'
-              }`}
-              style={
-                item.primary
-                  ? {
-                      background: 'linear-gradient(135deg, #FFB32C 0%, #FF8C00 100%)',
-                      color: '#1a0800',
-                      boxShadow: '0 4px 16px rgba(255,150,30,0.28)',
-                    }
-                  : undefined
-              }
-            >
-              {item.icon}
-              <span className="whitespace-nowrap leading-none">{item.label}</span>
-            </button>
-          ))}
+      {/* 操作按钮 */}
+      <div className="flex justify-center gap-2.5">
+        <button
+          onClick={handleSaveImage}
+          className="btn-glass flex items-center gap-1.5 px-4 py-2 text-[11px]"
+        >
+          <Download className="w-3.5 h-3.5" />
+          {isEnglish ? 'Save' : '保存图片'}
+        </button>
+        <button
+          onClick={onTryAgain}
+          className="btn-glass flex items-center gap-1.5 px-4 py-2 text-[11px]"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          {isEnglish ? 'Again' : '再来一次'}
+        </button>
       </div>
     </div>
   );

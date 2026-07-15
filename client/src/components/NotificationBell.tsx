@@ -24,16 +24,14 @@ export function NotificationBell() {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
 
-  // protectedProcedure — only poll when a cookie session actually exists,
-  // otherwise every anonymous visitor fires a failing request every 30s.
   const { data: unreadCount, refetch: refetchCount } = trpc.notification.unreadCount.useQuery(
     undefined,
-    { enabled: !!user, refetchInterval: 30000 }
+    { enabled: true, refetchInterval: 30000 } // 每30秒刷新一次
   );
 
   const { data: notifications, refetch: refetchList } = trpc.notification.list.useQuery(
     { limit: 10 },
-    { enabled: !!user && open }
+    { enabled: true && open }
   );
 
   const markAsReadMutation = trpc.notification.markAsRead.useMutation({

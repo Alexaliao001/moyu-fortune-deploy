@@ -21,26 +21,6 @@ class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error) {
-    const msg = error?.message || String(error);
-    if (
-      /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Loading chunk [\d]+ failed|ChunkLoadError/i.test(
-        msg
-      )
-    ) {
-      try {
-        const key = "moyu-chunk-reload";
-        if (sessionStorage.getItem(key) !== "1") {
-          sessionStorage.setItem(key, "1");
-          window.location.reload();
-          return;
-        }
-      } catch {
-        /* fall through to error UI */
-      }
-    }
-  }
-
   render() {
     if (this.state.hasError) {
       return (
