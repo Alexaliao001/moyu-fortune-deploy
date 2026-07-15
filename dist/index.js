@@ -2431,6 +2431,248 @@ function startDailyNotificationCron() {
   console.log("[DailyNotification] Cron job registered. Will send at 9:00 AM UTC+8 daily.");
 }
 
+// server/_core/adminOverview.ts
+init_db();
+init_deviceUser();
+import { timingSafeEqual as timingSafeEqual2 } from "node:crypto";
+import { sql as sql6 } from "drizzle-orm";
+var EXCLUDED_DEVICE_SQL = "^(smoke|test)-";
+function adminTokenOk(provided, expected = process.env.MOYU_ADMIN_TOKEN) {
+  if (!expected || typeof provided !== "string" || !provided) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual2(a, b);
+}
+function requestToken(req) {
+  const q = req.query.token;
+  if (typeof q === "string" && q) return q;
+  const header = req.headers.authorization;
+  if (typeof header === "string" && header.startsWith("Bearer ")) {
+    return header.slice("Bearer ".length);
+  }
+  return "";
+}
+function asRows2(result) {
+  if (Array.isArray(result)) return result;
+  const nested = result?.rows;
+  if (Array.isArray(nested)) return nested;
+  return [];
+}
+function launchDay() {
+  return process.env.MOYU_METRICS_LAUNCH_DATE || "2026-07-15";
+}
+async function buildAdminOverview() {
+  const db = await getDb();
+  if (!db) return null;
+  const day = shanghaiTodayKey();
+  const ledgerToday = asRows2(
+    await db.execute(sql6`
+      SELECT
+        COUNT(*)::int AS draws,
+        COUNT(DISTINCT fh."userId")::int AS draw_devices
+      FROM fortune_history fh
+      JOIN users u ON u.id = fh."userId"
+      WHERE u."openId" !~* ${"^guest_" + EXCLUDED_DEVICE_SQL}
+        AND ((fh."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Shanghai')::date
+            = ${day}::date
+    `)
+  )[0];
+  const newDevices = asRows2(
+    await db.execute(sql6`
+      SELECT COUNT(*)::int AS n
+      FROM users u
+      WHERE u."openId" !~* ${"^guest_" + EXCLUDED_DEVICE_SQL}
+        AND ((u."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Shanghai')::date
+            = ${day}::date
+    `)
+  )[0];
+  const eventsToday = asRows2(
+    await db.execute(sql6`
+      SELECT
+        COUNT(*) FILTER (WHERE event = 'share_click')::int AS share_clicks,
+        COUNT(DISTINCT device_id) FILTER (WHERE event = 'share_click')::int AS share_devices,
+        COUNT(*) FILTER (WHERE event = 'card_saved')::int AS card_saves,
+        COUNT(*) FILTER (WHERE event = 'membership_view')::int AS membership_views
+      FROM analytics_events
+      WHERE device_id !~* ${EXCLUDED_DEVICE_SQL}
+        AND (client_occurred_at AT TIME ZONE 'Asia/Shanghai')::date = ${day}::date
+    `)
+  )[0];
+  const totals = asRows2(
+    await db.execute(sql6`
+      SELECT
+        (SELECT COUNT(*)::int FROM fortune_history fh JOIN users u ON u.id = fh."userId"
+          WHERE u."openId" !~* ${"^guest_" + EXCLUDED_DEVICE_SQL}) AS draws,
+        (SELECT COUNT(DISTINCT fh."userId")::int FROM fortune_history fh JOIN users u ON u.id = fh."userId"
+          WHERE u."openId" !~* ${"^guest_" + EXCLUDED_DEVICE_SQL}) AS draw_devices,
+        (SELECT COUNT(*)::int FROM feedback) AS feedback
+    `)
+  )[0];
+  const firstDraws = asRows2(
+    await db.execute(sql6`
+      SELECT DISTINCT ON (device_id)
+        device_id,
+        props ->> 'utm_source' AS source
+      FROM analytics_events
+      WHERE event = 'draw'
+        AND device_id !~* ${EXCLUDED_DEVICE_SQL}
+        AND (client_occurred_at AT TIME ZONE 'Asia/Shanghai')::date >= ${launchDay()}::date
+      ORDER BY device_id, client_occurred_at ASC
+    `)
+  );
+  const channelFirstDraws = {};
+  for (const row of firstDraws) {
+    const source = String(row.source || "").trim();
+    if (!source) continue;
+    channelFirstDraws[source] = (channelFirstDraws[source] || 0) + 1;
+  }
+  const recentDraws = asRows2(
+    await db.execute(sql6`
+      SELECT
+        TO_CHAR((fh."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Shanghai',
+                'MM-DD HH24:MI') AS at,
+        u."openId" AS open_id,
+        u.name,
+        fh.level,
+        fh.percent
+      FROM fortune_history fh
+      JOIN users u ON u.id = fh."userId"
+      ORDER BY fh."createdAt" DESC
+      LIMIT 20
+    `)
+  ).map((row) => {
+    const openId = String(row.open_id || "");
+    const deviceId = openId.startsWith("guest_") ? openId.slice(6) : openId;
+    return {
+      at: String(row.at || ""),
+      deviceId: deviceId.slice(0, 12),
+      name: String(row.name || "\u6478\u9C7C\u8FBE\u4EBA"),
+      level: String(row.level || ""),
+      percent: Number(row.percent || 0)
+    };
+  });
+  const recentFeedback = asRows2(
+    await db.execute(sql6`
+      SELECT
+        TO_CHAR((f."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Shanghai',
+                'MM-DD HH24:MI') AS at,
+        f.type,
+        f.content,
+        f.contact
+      FROM feedback f
+      ORDER BY f."createdAt" DESC
+      LIMIT 10
+    `)
+  ).map((row) => ({
+    at: String(row.at || ""),
+    type: String(row.type || ""),
+    content: String(row.content || ""),
+    contact: String(row.contact || "")
+  }));
+  return {
+    ok: true,
+    generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    day,
+    launchDay: launchDay(),
+    today: {
+      draws: Number(ledgerToday?.draws || 0),
+      drawDevices: Number(ledgerToday?.draw_devices || 0),
+      newDevices: Number(newDevices?.n || 0),
+      shareClicks: Number(eventsToday?.share_clicks || 0),
+      shareDevices: Number(eventsToday?.share_devices || 0),
+      cardSaves: Number(eventsToday?.card_saves || 0),
+      membershipViews: Number(eventsToday?.membership_views || 0)
+    },
+    total: {
+      draws: Number(totals?.draws || 0),
+      drawDevices: Number(totals?.draw_devices || 0),
+      feedback: Number(totals?.feedback || 0)
+    },
+    channelFirstDraws,
+    recentDraws,
+    recentFeedback
+  };
+}
+function escapeHtml(value) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function renderHtml(data) {
+  const stat = (label, value) => `<div class="stat"><div class="v">${value}</div><div class="l">${label}</div></div>`;
+  const channels = Object.entries(data.channelFirstDraws).sort(([, a], [, b]) => b - a).map(([source, count]) => `<tr><td>${escapeHtml(source)}</td><td>${count}</td></tr>`).join("");
+  const draws = data.recentDraws.map(
+    (row) => `<tr><td>${row.at}</td><td>${escapeHtml(row.name)}</td><td>${escapeHtml(
+      row.deviceId
+    )}\u2026</td><td>${escapeHtml(row.level)} ${row.percent}%</td></tr>`
+  ).join("");
+  const feedback2 = data.recentFeedback.map(
+    (row) => `<tr><td>${row.at}</td><td>${escapeHtml(row.type)}</td><td>${escapeHtml(
+      row.content.slice(0, 120)
+    )}</td><td>${escapeHtml(row.contact)}</td></tr>`
+  ).join("");
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="refresh" content="300">
+<title>\u6478\u4E86\u4E48 \xB7 \u8FD0\u8425\u603B\u89C8</title>
+<style>
+body{margin:0;padding:20px;background:#140b05;color:#f3e2c7;font:14px/1.5 -apple-system,"PingFang SC",sans-serif}
+h1{font-size:18px;margin:0 0 4px}h2{font-size:14px;color:#d9a94f;margin:22px 0 8px}
+.sub{color:#8d7a5e;font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(105px,1fr));gap:8px;margin-top:14px}
+.stat{background:rgba(255,180,50,.07);border:1px solid rgba(255,180,50,.18);border-radius:12px;padding:10px}
+.stat .v{font-size:22px;font-weight:700;color:#ffd54f}.stat .l{font-size:11px;color:#a98f66;margin-top:2px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+td{padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:top}
+tr td:first-child{white-space:nowrap;color:#8d7a5e}
+.empty{color:#6b5a42;font-size:12px;padding:8px 0}
+</style></head><body>
+<h1>\u6478\u4E86\u4E48 \xB7 \u8FD0\u8425\u603B\u89C8</h1>
+<div class="sub">\u4E0A\u6D77\u65F6\u95F4 ${data.day} \xB7 \u751F\u6210\u4E8E ${escapeHtml(data.generatedAt)} \xB7 \u6BCF 5 \u5206\u949F\u81EA\u52A8\u5237\u65B0 \xB7 smoke-*/test-* \u5DF2\u6392\u9664</div>
+<h2>\u4ECA\u5929</h2>
+<div class="grid">
+${stat("\u62BD\u7B7E\u6B21\u6570", data.today.draws)}
+${stat("\u62BD\u7B7E\u8BBE\u5907", data.today.drawDevices)}
+${stat("\u65B0\u8BBE\u5907", data.today.newDevices)}
+${stat("\u5206\u4EAB\u70B9\u51FB", data.today.shareClicks)}
+${stat("\u5206\u4EAB\u8BBE\u5907", data.today.shareDevices)}
+${stat("\u5361\u7247\u4FDD\u5B58", data.today.cardSaves)}
+${stat("\u4F1A\u5458\u9875\u6D4F\u89C8", data.today.membershipViews)}
+</div>
+<h2>\u7D2F\u8BA1</h2>
+<div class="grid">
+${stat("\u603B\u62BD\u7B7E", data.total.draws)}
+${stat("\u603B\u8BBE\u5907", data.total.drawDevices)}
+${stat("\u53CD\u9988\u6761\u6570", data.total.feedback)}
+</div>
+<h2>\u6E20\u9053\u9996\u62BD\uFF08${data.launchDay} \u8D77\uFF09</h2>
+${channels ? `<table>${channels}</table>` : `<div class="empty">\u6682\u65E0\u6E20\u9053\u6570\u636E \u2014 \u53D1\u5E16\u540E\u8FD9\u91CC\u4F1A\u51FA\u73B0 jike / xiaohongshu / v2ex / twitter_zh</div>`}
+<h2>\u6700\u8FD1 20 \u6B21\u62BD\u7B7E</h2>
+${draws ? `<table>${draws}</table>` : `<div class="empty">\u6682\u65E0\u62BD\u7B7E</div>`}
+<h2>\u6700\u8FD1\u53CD\u9988</h2>
+${feedback2 ? `<table>${feedback2}</table>` : `<div class="empty">\u6682\u65E0\u53CD\u9988</div>`}
+</body></html>`;
+}
+function registerAdminApi(app) {
+  app.get("/api/admin/overview", async (req, res) => {
+    if (!process.env.MOYU_ADMIN_TOKEN) {
+      return res.status(503).json({ ok: false, error: "admin_disabled" });
+    }
+    if (!adminTokenOk(requestToken(req))) {
+      return res.status(401).json({ ok: false, error: "unauthorized" });
+    }
+    try {
+      const data = await buildAdminOverview();
+      if (!data) return res.status(503).json({ ok: false, error: "no_db" });
+      if (req.query.format === "json") return res.json(data);
+      return res.type("html").send(renderHtml(data));
+    } catch (error) {
+      console.warn("[admin overview]", error);
+      return res.status(500).json({ ok: false });
+    }
+  });
+}
+
 // server/light/store.ts
 import fs from "node:fs";
 import path from "node:path";
@@ -2484,7 +2726,7 @@ function httpUrlFromLibsql(url) {
   }
   return url.replace(/\/$/, "");
 }
-async function tursoExec(sql8, args = []) {
+async function tursoExec(sql9, args = []) {
   const base = httpUrlFromLibsql(LIBSQL_URL);
   const res = await fetch(`${base}/v2/pipeline`, {
     method: "POST",
@@ -2497,7 +2739,7 @@ async function tursoExec(sql8, args = []) {
         {
           type: "execute",
           stmt: {
-            sql: sql8,
+            sql: sql9,
             args: args.map((a) => ({
               type: typeof a === "number" ? "integer" : "text",
               value: String(a)
@@ -2776,8 +3018,8 @@ init_schema();
 init_db();
 init_guestAuth();
 init_deviceUser();
-import { and as and4, desc as desc5, eq as eq10, sql as sql6 } from "drizzle-orm";
-function asRows2(result) {
+import { and as and4, desc as desc5, eq as eq10, sql as sql7 } from "drizzle-orm";
+function asRows3(result) {
   if (Array.isArray(result)) return result;
   const nested = result?.rows;
   if (Array.isArray(nested)) return nested;
@@ -2859,7 +3101,7 @@ async function getLeaderboardPg(limit = 30) {
     return { streak: [], weekly: [], global: { totalDraws: 0, uniqueDevices: 0 } };
   }
   const lim = Math.max(1, Math.min(50, limit));
-  const streakResult = await database.execute(sql6`
+  const streakResult = await database.execute(sql7`
     WITH user_dates AS (
       SELECT
         "userId" AS user_id,
@@ -2903,7 +3145,7 @@ async function getLeaderboardPg(limit = 30) {
     ORDER BY cs.streak_length DESC, cs.last_date DESC
     LIMIT ${lim}
   `);
-  const streak = asRows2(streakResult).map((row, index2) => {
+  const streak = asRows3(streakResult).map((row, index2) => {
     const openId = String(row.openId || "");
     const deviceId = openId.startsWith("guest_") ? openId.slice(6) : openId;
     return {
@@ -2914,7 +3156,7 @@ async function getLeaderboardPg(limit = 30) {
       lastDate: String(row.lastDate || "").slice(0, 10)
     };
   });
-  const weeklyResult = await database.execute(sql6`
+  const weeklyResult = await database.execute(sql7`
     SELECT DISTINCT ON (fh."userId")
       fh."userId" AS "userId",
       u.name,
@@ -2927,7 +3169,7 @@ async function getLeaderboardPg(limit = 30) {
     WHERE fh."createdAt" >= NOW() - INTERVAL '7 days'
     ORDER BY fh."userId", fh.percent DESC, fh."createdAt" DESC
   `);
-  const weekly = asRows2(weeklyResult).sort((a, b) => Number(b.bestPercent) - Number(a.bestPercent)).slice(0, lim).map((row, index2) => {
+  const weekly = asRows3(weeklyResult).sort((a, b) => Number(b.bestPercent) - Number(a.bestPercent)).slice(0, lim).map((row, index2) => {
     const openId = String(row.openId || "");
     const deviceId = openId.startsWith("guest_") ? openId.slice(6) : openId;
     return {
@@ -2939,12 +3181,12 @@ async function getLeaderboardPg(limit = 30) {
       emoji: String(row.emoji || "")
     };
   });
-  const globalResult = await database.execute(sql6`
+  const globalResult = await database.execute(sql7`
     SELECT
       (SELECT COUNT(*)::int FROM fortune_history) AS "totalDraws",
       (SELECT COUNT(DISTINCT "userId")::int FROM fortune_history) AS "uniqueDevices"
   `);
-  const g = asRows2(globalResult)[0] || {};
+  const g = asRows3(globalResult)[0] || {};
   return {
     streak,
     weekly,
@@ -3157,6 +3399,10 @@ function registerLightApi(app) {
     }
   });
   app.get("/api/light/feedback", async (req, res) => {
+    if (!adminTokenOk(requestToken(req))) {
+      res.status(401).json({ ok: false, error: "unauthorized" });
+      return;
+    }
     const limit = Number(req.query.limit || 50);
     const list = await usePostgres() ? await listFeedbackPg(limit) : listFeedback(limit);
     res.json({ ok: true, feedback: list });
@@ -3265,7 +3511,7 @@ init_schema();
 init_db();
 init_deviceUser();
 import { createHash as createHash3 } from "node:crypto";
-import { sql as sql7 } from "drizzle-orm";
+import { sql as sql8 } from "drizzle-orm";
 var ALLOWED_EVENTS = /* @__PURE__ */ new Set([
   "draw",
   "share_click",
@@ -3330,7 +3576,7 @@ function validatedClientTime(value, now = Date.now()) {
 async function ensureAnalyticsSchema() {
   const db = await getDb();
   if (!db) return;
-  await db.execute(sql7`
+  await db.execute(sql8`
     CREATE TABLE IF NOT EXISTS analytics_events (
       id BIGSERIAL PRIMARY KEY,
       event_id VARCHAR(128) NOT NULL,
@@ -3341,49 +3587,49 @@ async function ensureAnalyticsSchema() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
-  await db.execute(sql7`
+  await db.execute(sql8`
     ALTER TABLE analytics_events
     ADD COLUMN IF NOT EXISTS event_id VARCHAR(128)
   `);
-  await db.execute(sql7`
+  await db.execute(sql8`
     UPDATE analytics_events
     SET event_id = 'legacy-' || id::text
     WHERE event_id IS NULL
   `);
-  await db.execute(sql7`
+  await db.execute(sql8`
     ALTER TABLE analytics_events
     ALTER COLUMN event_id SET NOT NULL
   `);
-  await db.execute(sql7`
+  await db.execute(sql8`
     ALTER TABLE analytics_events
     ADD COLUMN IF NOT EXISTS client_occurred_at TIMESTAMPTZ
   `);
-  await db.execute(sql7`
+  await db.execute(sql8`
     UPDATE analytics_events
     SET client_occurred_at = created_at
     WHERE client_occurred_at IS NULL
   `);
-  await db.execute(sql7`
+  await db.execute(sql8`
     ALTER TABLE analytics_events
     ALTER COLUMN client_occurred_at SET DEFAULT NOW()
   `);
-  await db.execute(sql7`
+  await db.execute(sql8`
     ALTER TABLE analytics_events
     ALTER COLUMN client_occurred_at SET NOT NULL
   `);
-  await db.execute(sql7`
+  await db.execute(sql8`
     CREATE UNIQUE INDEX IF NOT EXISTS analytics_events_event_id_uidx
     ON analytics_events (event_id)
   `);
-  await db.execute(sql7`
+  await db.execute(sql8`
     CREATE INDEX IF NOT EXISTS analytics_events_client_occurred_at_idx
     ON analytics_events (client_occurred_at)
   `);
-  await db.execute(sql7`
+  await db.execute(sql8`
     CREATE INDEX IF NOT EXISTS analytics_events_event_occurred_idx
     ON analytics_events (event, client_occurred_at)
   `);
-  await db.execute(sql7`
+  await db.execute(sql8`
     CREATE INDEX IF NOT EXISTS analytics_events_device_occurred_idx
     ON analytics_events (device_id, client_occurred_at)
   `);
@@ -3491,6 +3737,7 @@ async function startServer() {
   });
   registerLightApi(app);
   registerAnalyticsApi(app);
+  registerAdminApi(app);
   app.use(
     "/api/trpc",
     createExpressMiddleware({
