@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MessageSquare, Bug, Lightbulb, ThumbsUp, HelpCircle, Send, X, CheckCircle } from 'lucide-react';
+import { MessageSquare, Bug, Lightbulb, ThumbsUp, HelpCircle, Send, CheckCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
+import { hasLightApi, lightSubmitFeedback } from '@/lib/lightApi';
+import { getUserId } from '@/lib/localStorage';
+import { isStaticMode } from '@/lib/staticMode';
 
 interface FeedbackDialogProps {
   open: boolean;
@@ -28,14 +31,15 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
   const [content, setContent] = useState('');
   const [contact, setContact] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [pending, setPending] = useState(false);
+  const light = hasLightApi();
+  const staticMode = isStaticMode();
 
   const submitMutation = trpc.feedback.submit.useMutation({
     onSuccess: () => {
       setSubmitted(true);
-      // 3秒后关闭弹窗
       setTimeout(() => {
         onOpenChange(false);
-        // 重置状态
         setTimeout(() => {
           setSubmitted(false);
           setType('suggestion');
@@ -49,9 +53,48 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
     },
   });
 
-  const handleSubmit = () => {
+  const markSuccess = () => {
+    setSubmitted(true);
+    setTimeout(() => {
+      onOpenChange(false);
+      setTimeout(() => {
+        setSubmitted(false);
+        setType('suggestion');
+        setContent('');
+        setContact('');
+      }, 300);
+    }, 2000);
+  };
+
+  const handleSubmit = async () => {
     if (!content.trim()) {
       toast.error(t('feedback.contentPlaceholder'));
+      return;
+    }
+
+    if (light) {
+      setPending(true);
+      const result = await lightSubmitFeedback({
+        deviceId: getUserId(),
+        type,
+        content: content.trim(),
+        contact: contact.trim() || undefined,
+        userAgent: navigator.userAgent,
+      });
+      setPending(false);
+      if (!result.ok) {
+        toast.error(t('feedback.error'));
+        return;
+      }
+      markSuccess();
+      return;
+    }
+
+    if (staticMode) {
+      toast.message(
+        t('feedback.error'),
+        { description: 'Static demo — set VITE_MOYU_API_BASE for cloud feedback.' }
+      );
       return;
     }
 
@@ -63,13 +106,12 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
     });
   };
 
-  const isSubmitting = submitMutation.isPending;
+  const isSubmitting = pending || submitMutation.isPending;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md rounded-2xl p-0 overflow-hidden border-white/10" style={{ background: 'rgba(25,20,15,0.98)', backdropFilter: 'blur(24px)' }}>
         {submitted ? (
-          // 成功状态
           <div className="p-8 text-center">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ background: 'rgba(34,197,94,0.15)' }}>
               <CheckCircle className="w-8 h-8 text-green-400" />
@@ -83,7 +125,6 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
           </div>
         ) : (
           <>
-            {/* 头部 */}
             <DialogHeader className="px-6 pt-6 pb-4 bg-gradient-to-r from-orange-500 to-amber-500">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -102,9 +143,7 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
               </div>
             </DialogHeader>
 
-            {/* 内容 */}
             <div className="p-6 space-y-4">
-              {/* 反馈类型选择 */}
               <div>
                 <label className="text-sm font-medium text-white/70 mb-2 block">
                   {t('feedback.type')}
@@ -130,7 +169,6 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
                 </div>
               </div>
 
-              {/* 反馈内容 */}
               <div>
                 <label className="text-sm font-medium text-white/70 mb-2 block">
                   {t('feedback.content')} <span className="text-red-400">*</span>
@@ -147,7 +185,6 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
                 </p>
               </div>
 
-              {/* 联系方式 */}
               <div>
                 <label className="text-sm font-medium text-white/70 mb-2 block">
                   {t('feedback.contact')}
@@ -161,7 +198,6 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
                 />
               </div>
 
-              {/* 提交按钮 */}
               <Button
                 onClick={handleSubmit}
                 disabled={isSubmitting || !content.trim()}

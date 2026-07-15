@@ -1,6 +1,8 @@
 import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect } from 'react';
 import gsap from 'gsap';
 import { SlotIcon, SLOT_ICON_COMPONENTS } from './SlotIcons';
+import { resolveDailyDraw } from '@/lib/dailyDraw';
+import { getUserId } from '@/lib/localStorage';
 
 export interface SlotMachineRef {
   spin: () => void;
@@ -11,20 +13,14 @@ interface SlotMachineProps {
   isSpinning: boolean;
   setIsSpinning: (spinning: boolean) => void;
   selectedAvatar?: string;
+  locked?: boolean;
+  onLockedClick?: () => void;
   onSpinStart?: () => void;
   onReelStop?: (index: number) => void;
   onLeverHoverSound?: () => void;
 }
 
 const SLOT_COUNT = SLOT_ICON_COMPONENTS.length; // 6 icons
-
-const fortunes = [
-  { level: '大吉', emoji: '', minPercent: 85, maxPercent: 99, weight: 5, theme: 'lucky' },
-  { level: '中吉', emoji: '', minPercent: 70, maxPercent: 84, weight: 20, theme: 'lucky' },
-  { level: '小吉', emoji: '', minPercent: 55, maxPercent: 69, weight: 35, theme: 'normal' },
-  { level: '末吉', emoji: '', minPercent: 35, maxPercent: 54, weight: 25, theme: 'normal' },
-  { level: '凶', emoji: '', minPercent: 10, maxPercent: 34, weight: 15, theme: 'bad' },
-];
 
 function triggerHaptic(pattern: 'light' | 'medium' | 'heavy' = 'light') {
   if ('vibrate' in navigator) {
@@ -34,10 +30,11 @@ function triggerHaptic(pattern: 'light' | 'medium' | 'heavy' = 'light') {
 }
 
 function getRandomIndex(): number {
+  // Visual reel noise only — outcome is locked by resolveDailyDraw.
   return Math.floor(Math.random() * SLOT_COUNT);
 }
 
-const SlotMachine = forwardRef<SlotMachineRef, SlotMachineProps>(({ onSpinComplete, isSpinning, setIsSpinning, onSpinStart, onReelStop, onLeverHoverSound }, ref) => {
+const SlotMachine = forwardRef<SlotMachineRef, SlotMachineProps>(({ onSpinComplete, isSpinning, setIsSpinning, locked = false, onLockedClick, onSpinStart, onReelStop, onLeverHoverSound }, ref) => {
   const handleRef = useRef<HTMLDivElement>(null);
   const ballRef = useRef<HTMLDivElement>(null);
   const reelRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -91,6 +88,10 @@ const SlotMachine = forwardRef<SlotMachineRef, SlotMachineProps>(({ onSpinComple
   }, [isHandleHovered, isSpinning]);
 
   const spin = useCallback(() => {
+    if (locked) {
+      onLockedClick?.();
+      return;
+    }
     if (spinningRef.current || isSpinning) return;
     
     spinningRef.current = true;
@@ -99,15 +100,14 @@ const SlotMachine = forwardRef<SlotMachineRef, SlotMachineProps>(({ onSpinComple
     triggerHaptic('medium');
     onSpinStart?.();
 
-    const totalWeight = fortunes.reduce((sum, f) => sum + f.weight, 0);
-    let random = Math.random() * totalWeight;
-    let selectedFortune = fortunes[0];
-    for (const fortune of fortunes) {
-      random -= fortune.weight;
-      if (random <= 0) { selectedFortune = fortune; break; }
-    }
-
-    const percent = Math.floor(Math.random() * (selectedFortune.maxPercent - selectedFortune.minPercent + 1)) + selectedFortune.minPercent;
+    // 铁律 3：结果 = f(deviceId, date)，与动画噪声解耦
+    const daily = resolveDailyDraw(getUserId());
+    const selectedFortune = {
+      level: daily.level,
+      emoji: daily.emoji,
+      percent: daily.percent,
+    };
+    const percent = daily.percent;
 
     if (handleRef.current) {
       gsap.timeline()
@@ -121,17 +121,17 @@ const SlotMachine = forwardRef<SlotMachineRef, SlotMachineProps>(({ onSpinComple
       [getRandomIndex(), getRandomIndex()],
     ];
 
-    const columnDelays = [0, 0.25, 0.5];
+    const columnDelays = [0, 0.12, 0.24];
     
     reelRefs.current.forEach((reel, colIndex) => {
       if (!reel) return;
       const delay = columnDelays[colIndex];
-      const scrollCount = 8 + colIndex * 3;
+      const scrollCount = 5 + colIndex * 2;
       const tl = gsap.timeline({ delay });
       
       for (let i = 0; i < scrollCount; i++) {
         const isLastScroll = i === scrollCount - 1;
-        const duration = isLastScroll ? 0.12 : 0.035 + (i * 0.002);
+        const duration = isLastScroll ? 0.08 : 0.028 + (i * 0.002);
         
         tl.to(reel, {
           y: -56,
@@ -147,12 +147,12 @@ const SlotMachine = forwardRef<SlotMachineRef, SlotMachineProps>(({ onSpinComple
         });
         tl.set(reel, { y: 56 });
         if (isLastScroll) {
-          tl.to(reel, { y: -12, duration: 0.08, ease: 'power2.out' });
-          tl.to(reel, { y: 6, duration: 0.06, ease: 'power1.inOut' });
-          tl.to(reel, { y: -3, duration: 0.05, ease: 'power1.inOut' });
+          tl.to(reel, { y: -12, duration: 0.06, ease: 'power2.out' });
+          tl.to(reel, { y: 6, duration: 0.045, ease: 'power1.inOut' });
+          tl.to(reel, { y: -3, duration: 0.035, ease: 'power1.inOut' });
           tl.to(reel, {
             y: 0,
-            duration: 0.04,
+            duration: 0.03,
             ease: 'power1.out',
             onComplete: () => {
               triggerHaptic('heavy');
@@ -172,17 +172,22 @@ const SlotMachine = forwardRef<SlotMachineRef, SlotMachineProps>(({ onSpinComple
       }
     });
 
+    // AGENTS P0-4 验收：断网抽签 1 秒内出结果（本地计算即时，动画 ≤900ms）
     setTimeout(() => {
       spinningRef.current = false;
       setIsSpinning(false);
       onSpinComplete({ level: selectedFortune.level, emoji: selectedFortune.emoji, percent, catUrl: '' });
-    }, 2000);
-  }, [isSpinning, setIsSpinning, onSpinStart, onReelStop, onSpinComplete]);
+    }, 900);
+  }, [locked, onLockedClick, isSpinning, setIsSpinning, onSpinStart, onReelStop, onSpinComplete]);
 
   useImperativeHandle(ref, () => ({ spin }), [spin]);
 
   const handleLeverClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
+    if (locked) {
+      onLockedClick?.();
+      return;
+    }
     if (spinningRef.current || isSpinning) return;
     
     if (handleRef.current) {
@@ -193,7 +198,7 @@ const SlotMachine = forwardRef<SlotMachineRef, SlotMachineProps>(({ onSpinComple
     } else {
       spin();
     }
-  }, [spin, isSpinning]);
+  }, [locked, onLockedClick, spin, isSpinning]);
 
   return (
     <div className="relative flex items-center">

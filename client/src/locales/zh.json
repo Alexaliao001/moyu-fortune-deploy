@@ -3,12 +3,10 @@
     "title": "摸了么",
     "subtitle": "今天能摸吗",
     "description": "每日摸鱼运势占卜",
-    "footer": "ChillWorks · AI for Life"
+    "footer": "ChillWorks · 仅供娱乐"
   },
   "fortune": {
     "clickToStart": "点击铜钱或拉杆，测测今天的摸鱼运势",
-    "remainingDraws": "今日剩余 {{count}} 次抽签",
-    "unlimited": "无限抽签",
     "drawing": "正在占卜...",
     "levels": {
       "大吉": "大吉",
@@ -23,51 +21,11 @@
     "hours": "小时",
     "energyBar": "摸鱼体力槽",
     "beatPercent": "击败了全国 {{percent}}% 的打工人",
-    "drawAgain": "再来一签",
     "share": "分享结果"
-  },
-  "membership": {
-    "title": "会员中心",
-    "benefits": "会员权益",
-    "unlimited": "无限抽签",
-    "history": "历史记录",
-    "vipAvatar": "VIP头像",
-    "currentStatus": "当前状态",
-    "notMember": "非会员",
-    "member": "会员",
-    "lifetime": "永久会员",
-    "expiresAt": "到期时间",
-    "subscribe": "开通会员",
-    "plans": {
-      "monthly": "月卡",
-      "quarterly": "季卡",
-      "yearly": "年卡",
-      "lifetime": "永久会员"
-    },
-    "perMonth": "/月",
-    "oneTime": "一次性付款",
-    "popular": "最受欢迎",
-    "bestValue": "最划算",
-    "unlockMore": "开通会员 · 解锁更多摸鱼能力"
   },
   "history": {
     "title": "历史记录",
-    "empty": "暂无抽签记录",
-    "memberOnly": "会员专属功能",
-    "becomeMember": "开通会员查看历史记录"
-  },
-  "invite": {
-    "title": "邀请有礼",
-    "yourCode": "你的邀请码",
-    "copyCode": "复制邀请码",
-    "copied": "已复制",
-    "shareLink": "分享链接",
-    "reward": "邀请奖励",
-    "rewardDesc": "每成功邀请1位好友，双方各得3天会员",
-    "inviteCount": "已邀请",
-    "people": "人",
-    "earnedDays": "获得天数",
-    "days": "天"
+    "empty": "暂无抽签记录"
   },
   "share": {
     "title": "分享到",
@@ -78,17 +36,11 @@
     "copy": "复制文案",
     "saveImage": "保存图片",
     "generating": "生成海报中...",
-    "inviteTitle": "分享邀请",
-    "inviteSubtitle": "邀请好友一起摸鱼，双方各得3天会员",
     "saveCard": "保存图片",
     "copyLink": "复制链接",
     "shareTo": "分享到",
     "moreWays": "更多分享方式",
     "cardBrand": "摸了么",
-    "cardTag": "邀请卡",
-    "cardInvite": "邀请你一起摸鱼",
-    "cardCodeLabel": "专属邀请码",
-    "cardReward": "使用邀请码注册，双方各得3天会员",
     "cardSlogan": "测测你今天能不能摸鱼~",
     "wechatSaveHint": "图片已保存，请打开微信手动分享",
     "wechatSaveDesc": "长按图片即可分享到朋友圈"

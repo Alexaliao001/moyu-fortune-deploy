@@ -1,5 +1,5 @@
 /**
- * 摸鱼猫IP风格老虎机图标 - AI生成的金色橘猫插画
+ * 摸鱼猫 IP 风格老虎机图标
  * 6个图标：睡觉猫、游戏猫、钓鱼猫、咖啡猫、偷懒猫、招财猫
  */
 
@@ -19,33 +19,33 @@ interface SlotIconData {
 const SLOT_ICONS: SlotIconData[] = [
   {
     name: 'sleep',
-    webp: 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/HxmOknthSUeWcUWT.webp',
-    png: 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/WyaYMVfnuTSsGDVq.png',
+    webp: '/assets/moyu/HxmOknthSUeWcUWT.webp',
+    png: '/assets/moyu/WyaYMVfnuTSsGDVq.png',
   },
   {
     name: 'gaming',
-    webp: 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/sbDkgQVfSUWcWAYH.webp',
-    png: 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/QtLjZtLiIftiYbmS.png',
+    webp: '/assets/moyu/sbDkgQVfSUWcWAYH.webp',
+    png: '/assets/moyu/QtLjZtLiIftiYbmS.png',
   },
   {
     name: 'fishing',
-    webp: 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/RFeuFFEDpugNdkyL.webp',
-    png: 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/pAlCCKveTjxNANlG.png',
+    webp: '/assets/moyu/RFeuFFEDpugNdkyL.webp',
+    png: '/assets/moyu/pAlCCKveTjxNANlG.png',
   },
   {
     name: 'coffee',
-    webp: 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/dwizniBaXvUZrpkb.webp',
-    png: 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/yzbiElVKyHIrzfyU.png',
+    webp: '/assets/moyu/dwizniBaXvUZrpkb.webp',
+    png: '/assets/moyu/yzbiElVKyHIrzfyU.png',
   },
   {
     name: 'lazy',
-    webp: 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/SLakwZBlrjqZEkAt.webp',
-    png: 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/YOqFgzCcYfXxWGgF.png',
+    webp: '/assets/moyu/SLakwZBlrjqZEkAt.webp',
+    png: '/assets/moyu/YOqFgzCcYfXxWGgF.png',
   },
   {
     name: 'lucky',
-    webp: 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/TMvSonHIAftmNtTB.webp',
-    png: 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/LigaxsfpniOQSBlM.png',
+    webp: '/assets/moyu/TMvSonHIAftmNtTB.webp',
+    png: '/assets/moyu/LigaxsfpniOQSBlM.png',
   },
 ];
 

@@ -34,32 +34,39 @@ export default function SharePrompt({ visible, onClose, onShare, level, emoji }:
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    if (visible && !dismissed) {
-      // 延迟2秒后出现，不打断看结果的体验
-      const timer = setTimeout(() => {
-        if (overlayRef.current && cardRef.current) {
-          gsap.to(overlayRef.current, { opacity: 1, visibility: 'visible', duration: 0.3 });
-          gsap.fromTo(cardRef.current, 
-            { y: 60, opacity: 0, scale: 0.9 },
-            { y: 0, opacity: 1, scale: 1, duration: 0.5, ease: 'back.out(1.5)' }
-          );
-        }
-      }, 2500);
-      return () => clearTimeout(timer);
+    if (!visible) {
+      setDismissed(false);
+      return;
     }
+    if (dismissed) return;
+    const timer = setTimeout(() => {
+      if (overlayRef.current && cardRef.current) {
+        gsap.to(overlayRef.current, { opacity: 1, visibility: 'visible', duration: 0.3 });
+        gsap.fromTo(
+          cardRef.current,
+          { y: 60, opacity: 0, scale: 0.9 },
+          { y: 0, opacity: 1, scale: 1, duration: 0.5, ease: 'back.out(1.5)' }
+        );
+      }
+    }, 400);
+    return () => clearTimeout(timer);
   }, [visible, dismissed]);
 
   const handleClose = () => {
     if (overlayRef.current && cardRef.current) {
       gsap.to(cardRef.current, { y: 30, opacity: 0, duration: 0.25 });
-      gsap.to(overlayRef.current, { 
-        opacity: 0, duration: 0.3, 
+      gsap.to(overlayRef.current, {
+        opacity: 0,
+        duration: 0.3,
         onComplete: () => {
           gsap.set(overlayRef.current!, { visibility: 'hidden' });
           setDismissed(true);
           onClose();
-        }
+        },
       });
+    } else {
+      setDismissed(true);
+      onClose();
     }
   };
 
@@ -84,23 +91,29 @@ export default function SharePrompt({ visible, onClose, onShare, level, emoji }:
   };
 
   const socialProof = isEnglish
-    ? <>Already <span className="text-amber-400 font-bold">12,847</span> people shared today's fortune</>
-    : <>已有 <span className="text-amber-400 font-bold">12,847</span> 人分享了今日运势</>;
+    ? 'Share your card — draws stay free forever'
+    : '分享你的签文卡片 · 抽签永远免费';
 
   const shareButtonText = isEnglish ? 'Share with Friends' : '分享给朋友';
-  const rewardHint = isEnglish ? 'Share to get extra draws' : '分享后可获得额外抽签次数';
+  const rewardHint = isEnglish ? 'Entertainment only' : '仅供娱乐';
+  const closeLabel = isEnglish ? 'Close share prompt' : '关闭分享提示';
+  const shareLabel = isEnglish ? 'Share fortune card' : '分享签文卡片';
 
   return (
     <>
-      <div 
+      <div
         ref={overlayRef}
         className="fixed inset-0 z-50 invisible opacity-0"
         style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
         onClick={handleClose}
+        aria-hidden
       />
       <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-5 pointer-events-none">
-        <div 
+        <div
           ref={cardRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={isEnglish ? 'Share prompt' : '分享引导'}
           className="pointer-events-auto w-full max-w-[360px] rounded-2xl overflow-hidden"
           style={{
             background: 'rgba(30,25,20,0.95)',
@@ -108,33 +121,28 @@ export default function SharePrompt({ visible, onClose, onShare, level, emoji }:
             border: '1px solid rgba(255,180,50,0.2)',
             boxShadow: '0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(255,180,50,0.08)',
           }}
-          onClick={(e) => e.stopPropagation()}
+          onClick={e => e.stopPropagation()}
         >
-          {/* 关闭按钮 */}
-          <button 
+          <button
+            type="button"
             onClick={handleClose}
+            aria-label={closeLabel}
             className="absolute top-3 right-3 w-6 h-6 rounded-full flex items-center justify-center text-white/20 hover:text-white/50 hover:bg-white/5 transition-all z-10"
           >
             <X className="w-3.5 h-3.5" />
           </button>
 
           <div className="p-5 text-center">
-            {/* 顶部emoji */}
             <div className="text-4xl mb-2">{emoji}</div>
-            
-            {/* 标题 */}
-            <h3 className="text-white font-display text-lg mb-1">
-              {getTitle()}
-            </h3>
-            
-            {/* 副标题 - 社交证明 */}
-            <p className="text-white/40 text-xs mb-4">
-              {socialProof}
-            </p>
 
-            {/* 分享按钮 */}
+            <h3 className="text-white font-display text-lg mb-1">{getTitle()}</h3>
+
+            <p className="text-white/40 text-xs mb-4">{socialProof}</p>
+
             <button
+              type="button"
               onClick={handleShare}
+              aria-label={shareLabel}
               className="w-full py-3 rounded-xl font-bold text-sm relative overflow-hidden transition-all active:scale-[0.98]"
               style={{
                 background: 'linear-gradient(135deg, #FFB32C 0%, #FF8C00 100%)',
@@ -142,10 +150,11 @@ export default function SharePrompt({ visible, onClose, onShare, level, emoji }:
                 boxShadow: '0 4px 20px rgba(255,150,30,0.3)',
               }}
             >
-              <div 
+              <div
                 className="absolute inset-0 pointer-events-none"
                 style={{
-                  background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%)',
+                  background:
+                    'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%)',
                   animation: 'btn-shimmer 2s ease-in-out infinite',
                 }}
               />
@@ -153,7 +162,6 @@ export default function SharePrompt({ visible, onClose, onShare, level, emoji }:
               <span className="relative z-10">{shareButtonText}</span>
             </button>
 
-            {/* 奖励提示 */}
             <div className="flex items-center justify-center gap-1.5 mt-3">
               <Sparkles className="w-3 h-3 text-purple-400" />
               <span className="text-purple-400/70 text-[10px]">{rewardHint}</span>

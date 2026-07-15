@@ -39,10 +39,17 @@ export function getSessionCookieOptions(
   //       ? hostname
   //       : undefined;
 
+  // Cross-site (chillworks.ai → onrender.com) needs SameSite=None; Secure.
+  // Localhost same-origin can use lax.
+  const secure = isSecureRequest(req) || ENV_FORCE_SECURE();
   return {
     httpOnly: true,
     path: "/",
-    sameSite: "none",
-    secure: isSecureRequest(req),
+    sameSite: secure ? "none" : "lax",
+    secure,
   };
+}
+
+function ENV_FORCE_SECURE() {
+  return process.env.NODE_ENV === "production";
 }

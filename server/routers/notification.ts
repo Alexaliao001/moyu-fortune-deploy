@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { publicProcedure, router } from "../_core/trpc";
+import { protectedProcedure, router } from "../_core/trpc";
 import { notifications } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { eq, desc, and, sql } from "drizzle-orm";
 
 export const notificationRouter = router({
   // 获取用户通知列表
-  list: publicProcedure
+  list: protectedProcedure
     .input(
       z.object({
         limit: z.number().min(1).max(50).default(20),
@@ -40,7 +40,7 @@ export const notificationRouter = router({
     }),
 
   // 获取未读通知数量
-  unreadCount: publicProcedure.query(async ({ ctx }) => {
+  unreadCount: protectedProcedure.query(async ({ ctx }) => {
     const db = await getDb();
     if (!db) {
       throw new Error("Database not available");
@@ -55,7 +55,7 @@ export const notificationRouter = router({
   }),
 
   // 标记通知为已读
-  markAsRead: publicProcedure
+  markAsRead: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
@@ -72,7 +72,7 @@ export const notificationRouter = router({
     }),
 
   // 标记所有通知为已读
-  markAllAsRead: publicProcedure.mutation(async ({ ctx }) => {
+  markAllAsRead: protectedProcedure.mutation(async ({ ctx }) => {
     const db = await getDb();
     if (!db) {
       throw new Error("Database not available");

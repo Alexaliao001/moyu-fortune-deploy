@@ -11,10 +11,10 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string; style?:
 
 // 优化后的铜钱图片CDN URL (480x480, 原始2048x2048压缩)
 // WebP: ~48KB (vs 原始7MB) = 99.3%压缩率
-const COIN_FRONT_WEBP = 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/yDgdvSFbrknFvFrI.webp';
-const COIN_FRONT_PNG = 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/RYXOznObBogKMOPY.png';
-const COIN_BACK_WEBP = 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/ItDTYckNyckKRYED.webp';
-const COIN_BACK_PNG = 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/FsUVqbrUAovjUryY.png';
+const COIN_FRONT_WEBP = '/assets/moyu/yDgdvSFbrknFvFrI.webp';
+const COIN_FRONT_PNG = '/assets/moyu/RYXOznObBogKMOPY.png';
+const COIN_BACK_WEBP = '/assets/moyu/ItDTYckNyckKRYED.webp';
+const COIN_BACK_PNG = '/assets/moyu/FsUVqbrUAovjUryY.png';
 
 // 检测WebP支持
 const supportsWebP = typeof document !== 'undefined' && document.createElement('canvas').toDataURL('image/webp').indexOf('data:image/webp') === 0;
@@ -30,11 +30,12 @@ if (typeof window !== 'undefined') {
 interface CoinButtonProps {
   onClick: () => void;
   disabled?: boolean;
+  mode?: 'draw' | 'view';
   selectedAvatar?: string;
   onHoverSound?: () => void;
 }
 
-export default function CoinButton({ onClick, disabled, selectedAvatar = 'icon:cat', onHoverSound }: CoinButtonProps) {
+export default function CoinButton({ onClick, disabled, mode = 'draw', selectedAvatar = 'icon:cat', onHoverSound }: CoinButtonProps) {
   // 使用localStorage中保存的语言偏好（与i18n一致）
   const isEnglish = typeof window !== 'undefined' && 
     (localStorage.getItem('moyu-language') === 'en' || 
@@ -192,6 +193,17 @@ export default function CoinButton({ onClick, disabled, selectedAvatar = 'icon:c
     setTimeout(() => onClick(), 150);
   }, [onClick, disabled, isFlipping]);
 
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (disabled || isFlipping) return;
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handleClick();
+      }
+    },
+    [disabled, isFlipping, handleClick]
+  );
+
   // 铜钱尺寸
   const size = 120;
   const avatarRatio = 0.22;
@@ -296,8 +308,15 @@ export default function CoinButton({ onClick, disabled, selectedAvatar = 'icon:c
               }
             }}
             onPointerLeave={handlePointerLeave}
+            onKeyDown={handleKeyDown}
             role="button"
-            tabIndex={0}
+            tabIndex={disabled ? -1 : 0}
+            aria-label={
+              mode === 'view'
+                ? (isEnglish ? "View today's fortune" : '查看今日签')
+                : (isEnglish ? 'Draw fortune' : '抽签')
+            }
+            aria-disabled={disabled || undefined}
             className={`
               relative select-none outline-none
               ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
@@ -402,7 +421,9 @@ export default function CoinButton({ onClick, disabled, selectedAvatar = 'icon:c
             animation: isHovered ? 'none' : 'pulse-glow-text 3s ease-in-out infinite',
           }}
         >
-          {isEnglish ? 'Tap to Draw' : '点击抽签'}
+          {mode === 'view'
+            ? (isEnglish ? "View Today's Fortune" : '查看今日签')
+            : (isEnglish ? 'Tap to Draw' : '点击抽签')}
         </span>
         <div className="h-[1px] w-6" style={{ background: 'linear-gradient(90deg, rgba(255,200,100,0.3), transparent)' }} />
       </div>

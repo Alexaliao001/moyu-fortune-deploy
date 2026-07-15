@@ -93,19 +93,4 @@ describe("SharePanel Configuration", () => {
     });
   });
 
-  describe("Invite Code Validation", () => {
-    it("should accept 8-character invite codes", () => {
-      const validCode = "ABCD1234";
-      expect(validCode.length).toBe(8);
-    });
-
-    it("should generate proper share text with invite code", () => {
-      const inviteCode = "TESTCODE";
-      const shareText = `我在「摸了么」发现了超准的摸鱼运势！用我的邀请码 ${inviteCode} 注册，我们都能获得3天会员！`;
-      
-      expect(shareText).toContain(inviteCode);
-      expect(shareText).toContain("摸了么");
-      expect(shareText).toContain("3天会员");
-    });
-  });
 });

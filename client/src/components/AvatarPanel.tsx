@@ -1,11 +1,7 @@
 import { useEffect, useRef } from 'react';
 import gsap from 'gsap';
 import { useTranslation } from 'react-i18next';
-import { trpc } from '@/lib/trpc';
-import { useAuth } from '@/_core/hooks/useAuth';
-import { Crown, Lock, Sparkles, Cat, Rabbit, Dog, Bird, Squirrel, Bug, Fish, Turtle } from 'lucide-react';
-import { Link } from 'wouter';
-import { toast } from 'sonner';
+import { Cat, Rabbit, Dog, Bird, Squirrel, Bug, Fish, Turtle } from 'lucide-react';
 
 // 基础图标头像 - 用Lucide动物图标替代emoji
 const FREE_AVATAR_ICONS = [
@@ -30,7 +26,7 @@ const MOYU_CAT_AVATARS = {
     { 
       id: 'moyu-cat-main', 
       name: '慵懒猫', 
-      url: avatarUrl('https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/NtxSPKrbOftkNBXA.webp', 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/IbVspjqpdLodmUgX.png'),
+      url: avatarUrl('/assets/moyu/NtxSPKrbOftkNBXA.webp', '/assets/moyu/IbVspjqpdLodmUgX.png'),
       requiredLevel: 'free'
     },
   ],
@@ -39,31 +35,31 @@ const MOYU_CAT_AVATARS = {
     { 
       id: 'moyu-cat-happy', 
       name: '开心猫', 
-      url: avatarUrl('https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/RmIOLJgIqRufqvUz.webp', 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/mXrMBXwKBPukePcs.png'),
+      url: avatarUrl('/assets/moyu/RmIOLJgIqRufqvUz.webp', '/assets/moyu/mXrMBXwKBPukePcs.png'),
       requiredLevel: 'vip'
     },
     { 
       id: 'moyu-cat-sleepy', 
       name: '困倦猫', 
-      url: avatarUrl('https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/UWMIwmYJQoexbKUS.webp', 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/YNDlXnwToDtbvNBO.png'),
+      url: avatarUrl('/assets/moyu/UWMIwmYJQoexbKUS.webp', '/assets/moyu/YNDlXnwToDtbvNBO.png'),
       requiredLevel: 'vip'
     },
     { 
       id: 'moyu-cat-cool', 
       name: '墨镜猫', 
-      url: avatarUrl('https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/ktGjrXTZQOvkUUUy.webp', 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/xOGsEehPHfHyiUnk.png'),
+      url: avatarUrl('/assets/moyu/ktGjrXTZQOvkUUUy.webp', '/assets/moyu/xOGsEehPHfHyiUnk.png'),
       requiredLevel: 'vip'
     },
     { 
       id: 'moyu-cat-rich', 
       name: '财神猫', 
-      url: avatarUrl('https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/ihKfPJfeZNxiAwNh.webp', 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/hANkPrILgIVLcTHS.png'),
+      url: avatarUrl('/assets/moyu/ihKfPJfeZNxiAwNh.webp', '/assets/moyu/hANkPrILgIVLcTHS.png'),
       requiredLevel: 'vip'
     },
     { 
       id: 'moyu-cat-zen', 
       name: '禅修猫', 
-      url: avatarUrl('https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/koBdAuZQfhvwVlZw.webp', 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/BkiPydcLxSIpBuTT.png'),
+      url: avatarUrl('/assets/moyu/koBdAuZQfhvwVlZw.webp', '/assets/moyu/BkiPydcLxSIpBuTT.png'),
       requiredLevel: 'vip'
     },
   ],
@@ -72,23 +68,24 @@ const MOYU_CAT_AVATARS = {
     { 
       id: 'moyu-cat-diamond', 
       name: '钻石猫', 
-      url: avatarUrl('https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/DbhHnkPvKRQJAoHh.webp', 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/AQStiCIKoZwGWceH.png'),
+      url: avatarUrl('/assets/moyu/DbhHnkPvKRQJAoHh.webp', '/assets/moyu/AQStiCIKoZwGWceH.png'),
       requiredLevel: 'lifetime'
     },
     { 
       id: 'moyu-cat-wizard', 
       name: '魔法猫', 
-      url: avatarUrl('https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/yreHVXVadQrYlqIL.webp', 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/eRbzfoNDJLpeceUW.png'),
+      url: avatarUrl('/assets/moyu/yreHVXVadQrYlqIL.webp', '/assets/moyu/eRbzfoNDJLpeceUW.png'),
       requiredLevel: 'lifetime'
     },
     { 
       id: 'moyu-cat-astronaut', 
       name: '太空猫', 
-      url: avatarUrl('https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/hZHSAwpvzSKtBFmw.webp', 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663030286231/bDxLyODlMhPIGlZL.png'),
+      url: avatarUrl('/assets/moyu/hZHSAwpvzSKtBFmw.webp', '/assets/moyu/bDxLyODlMhPIGlZL.png'),
       requiredLevel: 'lifetime'
     },
   ],
 };
+const ALL_MOYU_CAT_AVATARS = Object.values(MOYU_CAT_AVATARS).flat();
 
 interface AvatarPanelProps {
   isOpen: boolean;
@@ -105,16 +102,6 @@ export default function AvatarPanel({
 }: AvatarPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
-  const { user } = useAuth();
-
-  const { data: subscriptionStatus } = trpc.stripe.getSubscriptionStatus.useQuery(
-    undefined,
-    { enabled: true }
-  );
-
-  const isVip = subscriptionStatus?.hasSubscription;
-  const plan = subscriptionStatus?.plan;
-  const isLifetime = plan === 'lifetime';
 
   useEffect(() => {
     if (isOpen) {
@@ -147,33 +134,12 @@ export default function AvatarPanel({
   const { i18n } = useTranslation();
   const isEnglish = i18n.language === 'en' || i18n.language.startsWith('en');
 
-  const handleSelect = (avatar: string, isLocked: boolean = false) => {
-    if (isLocked) {
-      toast.error(isEnglish ? 'Membership required' : '该头像需要会员解锁', {
-        description: isEnglish ? 'Subscribe to unlock exclusive avatars' : '开通会员即可使用专属头像',
-        action: {
-          label: isEnglish ? 'Subscribe' : '去开通',
-          onClick: () => {
-            onClose();
-            window.location.href = '/membership';
-          },
-        },
-      });
-      return;
-    }
+  const handleSelect = (avatar: string) => {
     onSelectAvatar(avatar);
     if ('vibrate' in navigator) {
       navigator.vibrate(10);
     }
     setTimeout(onClose, 200);
-  };
-
-  const canUseAvatar = (requiredLevel: string) => {
-    if (requiredLevel === 'free') return true;
-    if (!isVip) return false;
-    if (requiredLevel === 'vip') return true;
-    if (requiredLevel === 'lifetime') return isLifetime;
-    return false;
   };
 
   return (
@@ -202,7 +168,7 @@ export default function AvatarPanel({
           <p className="text-sm text-gray-500">{isEnglish ? 'Tap to select a cute icon' : '点击选择一个可爱的图标'}</p>
         </div>
 
-        {/* 摸鱼猫原创IP - 免费 */}
+        {/* 验证期全部头像免费开放，不提前承诺付费权益 */}
         <div className="px-6 pb-4">
           <div className="flex items-center gap-2 mb-2">
             <Cat className="w-4 h-4 text-orange-500" />
@@ -210,7 +176,7 @@ export default function AvatarPanel({
             <span className="text-[10px] bg-green-100 text-green-600 px-1.5 py-0.5 rounded">NEW</span>
           </div>
           <div className="flex justify-center gap-3 flex-wrap">
-            {MOYU_CAT_AVATARS.free.map((avatar) => (
+            {ALL_MOYU_CAT_AVATARS.map((avatar) => (
               <button
                 key={avatar.id}
                 onClick={() => handleSelect(avatar.url)}
@@ -224,86 +190,6 @@ export default function AvatarPanel({
                 <img src={avatar.url} alt={avatar.name} className="w-full h-full object-cover" />
               </button>
             ))}
-          </div>
-        </div>
-
-        {/* 摸鱼猫 - VIP会员专属 */}
-        <div className="px-6 pb-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Crown className="w-4 h-4 text-amber-500" />
-            <p className="text-xs text-amber-600 font-medium">{isEnglish ? 'MoYu Cat · VIP' : '摸鱼猫 · 会员专属'}</p>
-          </div>
-          <div className="flex justify-center gap-3 flex-wrap">
-            {MOYU_CAT_AVATARS.vip.map((avatar) => {
-              const isLocked = !canUseAvatar(avatar.requiredLevel);
-              return (
-                <button
-                  key={avatar.id}
-                  onClick={() => handleSelect(avatar.url, isLocked)}
-                  className={`relative w-[60px] h-[60px] rounded-full flex items-center justify-center overflow-hidden transition-all duration-300 ${
-                    avatar.url === selectedAvatar
-                      ? 'border-[3px] border-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.25)]'
-                      : isLocked
-                      ? 'border-[3px] border-amber-200'
-                      : 'border-[3px] border-amber-200 hover:scale-110'
-                  }`}
-                  title={avatar.name}
-                >
-                  <img 
-                    src={avatar.url} 
-                    alt={avatar.name} 
-                    className={`w-full h-full object-cover ${isLocked ? 'opacity-70' : ''}`} 
-                  />
-                  {isLocked && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-black/10 to-black/30 backdrop-blur-[1px]">
-                      <div className="w-6 h-6 bg-white/90 rounded-full flex items-center justify-center shadow-sm">
-                        <Lock className="w-3.5 h-3.5 text-amber-600" />
-                      </div>
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 摸鱼猫 - 永久会员专属 */}
-        <div className="px-6 pb-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="w-4 h-4 text-purple-500" />
-            <p className="text-xs text-purple-600 font-medium">{isEnglish ? 'MoYu Cat · Lifetime' : '摸鱼猫 · 永久会员专属'}</p>
-          </div>
-          <div className="flex justify-center gap-3 flex-wrap">
-            {MOYU_CAT_AVATARS.lifetime.map((avatar) => {
-              const isLocked = !canUseAvatar(avatar.requiredLevel);
-              return (
-                <button
-                  key={avatar.id}
-                  onClick={() => handleSelect(avatar.url, isLocked)}
-                  className={`relative w-[60px] h-[60px] rounded-full flex items-center justify-center overflow-hidden transition-all duration-300 ${
-                    avatar.url === selectedAvatar
-                      ? 'border-[3px] border-purple-500 shadow-[0_0_0_3px_rgba(168,85,247,0.25)]'
-                      : isLocked
-                      ? 'border-[3px] border-purple-200'
-                      : 'border-[3px] border-purple-200 hover:scale-110'
-                  }`}
-                  title={avatar.name}
-                >
-                  <img 
-                    src={avatar.url} 
-                    alt={avatar.name} 
-                    className={`w-full h-full object-cover ${isLocked ? 'opacity-70' : ''}`} 
-                  />
-                  {isLocked && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-black/10 to-black/30 backdrop-blur-[1px]">
-                      <div className="w-6 h-6 bg-white/90 rounded-full flex items-center justify-center shadow-sm">
-                        <Lock className="w-3.5 h-3.5 text-purple-600" />
-                      </div>
-                    </div>
-                  )}
-                </button>
-              );
-            })}
           </div>
         </div>
 
@@ -337,22 +223,6 @@ export default function AvatarPanel({
             })}
           </div>
         </div>
-
-        {/* 开通会员提示 */}
-        {!isVip && (
-          <div className="px-6 pb-4">
-            <Link href="/membership" onClick={onClose}>
-              <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-3 flex items-center gap-3">
-                <Crown className="w-8 h-8 text-amber-500" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-amber-800">{isEnglish ? 'Unlock more MoYu Cat avatars' : '解锁更多摸鱼猫头像'}</p>
-                  <p className="text-xs text-amber-600">{isEnglish ? 'Subscribe for exclusive perks' : '开通会员享受更多特权'}</p>
-                </div>
-                <span className="text-amber-500 text-sm">{isEnglish ? 'Subscribe →' : '去开通 →'}</span>
-              </div>
-            </Link>
-          </div>
-        )}
 
         {/* 底部安全区域 */}
         <div className="h-6" />

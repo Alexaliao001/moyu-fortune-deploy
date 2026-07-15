@@ -9,6 +9,14 @@ import {
   clearLocalUser,
 } from './localStorage';
 
+const memoryStore = new Map<string, string>();
+vi.stubGlobal('localStorage', {
+  getItem: (key: string) => memoryStore.get(key) ?? null,
+  setItem: (key: string, value: string) => memoryStore.set(key, String(value)),
+  removeItem: (key: string) => memoryStore.delete(key),
+  clear: () => memoryStore.clear(),
+});
+
 describe('localStorage User Management', () => {
   beforeEach(() => {
     // 清空localStorage

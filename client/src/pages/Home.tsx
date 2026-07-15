@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronLeft, Crown, History, Gift, Volume2, VolumeX, MessageSquare, Clock, Trophy, Timer, Fish, Cat, Rabbit, Dog, Bird, Squirrel, Bug, Turtle } from 'lucide-react';
+import { History, Volume2, VolumeX, Trophy, Fish, Cat, Rabbit, Dog, Bird, Squirrel, Bug, Turtle, MessageSquare } from 'lucide-react';
 import { useAuth } from '@/_core/hooks/useAuth';
-import { toast } from 'sonner';
 import { Link } from 'wouter';
 import { useTranslation } from 'react-i18next';
 import SlotMachine, { SlotMachineRef } from '@/components/SlotMachine';
@@ -24,33 +23,48 @@ import BadLuckEffect from '@/components/BadLuckEffect';
 import FloatingDecorations from '@/components/FloatingDecorations';
 import SharePrompt from '@/components/SharePrompt';
 import StreakBadge from '@/components/StreakBadge';
+import { isStaticMode, pickFallbackSlogan } from '@/lib/staticMode';
+import { getUserId } from '@/lib/localStorage';
+import {
+  percentInLevelRange,
+  resolveDailyDraw,
+  todayKey,
+  warmupBackend,
+  yesterdayKey,
+} from '@/lib/dailyDraw';
+import { track } from '@/lib/analytics';
+import { enqueueDraw, flushDrawOutbox } from '@/lib/drawOutbox';
+
+const TODAY_DRAW_KEY = 'moyu-today-draw';
+const SHARE_PROMPTED_KEY = 'moyu-share-prompted';
+const PENDING_SHARE_KEY = 'moyu-pending-share-prompt';
 
 type ThemeType = 'default' | 'lucky' | 'normal' | 'bad';
+type StoredTodayDraw = {
+  date: string;
+  level: string;
+  emoji: string;
+  percent: number;
+  message: string;
+  suggestedTime: string;
+};
+
+function readTodayDraw(): StoredTodayDraw | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(TODAY_DRAW_KEY);
+    if (!raw) return null;
+    const saved = JSON.parse(raw) as StoredTodayDraw;
+    return saved.date === todayKey() ? saved : null;
+  } catch {
+    return null;
+  }
+}
 
 const ICON_MAP: Record<string, React.ComponentType<any>> = {
   cat: Cat, rabbit: Rabbit, dog: Dog, bird: Bird,
   squirrel: Squirrel, bug: Bug, fish: Fish, turtle: Turtle,
 };
-
-const FALLBACK_MESSAGES_ZH = [
-  "今天老板不在，放心大胆摸！",
-  "摸鱼一时爽，一直摸一直爽！",
-  "工作是做不完的，但摸鱼的时光是有限的。",
-  "今天适合带薪拉屎，记得带手机。",
-  "假装很忙，实际在神游。",
-  "今天的KPI就是不被发现在摸鱼。",
-  "灵魂已经下班，肉体还在工位。",
-];
-
-const FALLBACK_MESSAGES_EN = [
-  "Boss is out today, slack away!",
-  "Slacking feels good, keep slacking!",
-  "Work never ends, but slacking time is precious.",
-  "Perfect day for a paid bathroom break.",
-  "Look busy, think about vacation.",
-  "Today's KPI: Don't get caught slacking.",
-  "Soul clocked out, body still at desk.",
-];
 
 const SUGGESTED_TIMES: Record<string, string[]> = {
   '大吉': ['4小时', '3.5小时', '4.5小时'],
@@ -90,19 +104,25 @@ export default function Home() {
   const [isLoadingSlogan, setIsLoadingSlogan] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [showSharePrompt, setShowSharePrompt] = useState(false);
-  const [streak] = useState(() => {
+  const [hasTodayDraw, setHasTodayDraw] = useState(
+    () => readTodayDraw() !== null
+  );
+  const [streak, setStreak] = useState(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('moyu-streak');
-      if (saved) {
-        const { count, lastDate } = JSON.parse(saved);
-        const today = new Date().toISOString().split('T')[0];
-        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-        if (lastDate === today || lastDate === yesterday) return count;
-      }
+      try {
+        const saved = localStorage.getItem('moyu-streak');
+        if (saved) {
+          const { count, lastDate } = JSON.parse(saved);
+          const today = todayKey();
+          const yesterday = yesterdayKey();
+          if (lastDate === today || lastDate === yesterday) return count;
+        }
+      } catch { /* ignore */ }
     }
     return 0;
   });
   const slotMachineRef = useRef<SlotMachineRef>(null);
+  const restoredRef = useRef(false);
   const [selectedAvatar, setSelectedAvatar] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('moyu-avatar') || 'icon:cat';
@@ -122,16 +142,16 @@ export default function Home() {
   });
 
   const generateSloganMutation = trpc.fortune.generateSlogan.useMutation();
+  const utils = trpc.useUtils();
   const { play, stop, toggleMute, isMuted } = useSound();
   const { isOffline, saveRecord } = useOffline();
   const { user } = useAuth();
+  const staticMode = isStaticMode();
 
-  const { data: drawLimit, refetch: refetchDrawLimit } = trpc.member.checkDrawLimit.useQuery(
-    undefined,
-    { enabled: true }
-  );
-
-  const recordDrawMutation = trpc.member.recordDraw.useMutation();
+  useEffect(() => {
+    warmupBackend();
+    void flushDrawOutbox();
+  }, []);
 
   useEffect(() => {
     if (selectedAvatar && typeof window !== 'undefined') {
@@ -139,12 +159,69 @@ export default function Home() {
     }
   }, [selectedAvatar]);
 
+  // 回访：恢复今日结果，但先停留在主页，由用户主动查看。
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    const saved = readTodayDraw();
+    if (!saved) {
+      setHasTodayDraw(false);
+      return;
+    }
+    const daily = resolveDailyDraw(getUserId(), saved.date);
+    const percent =
+      saved.percent > 0 && percentInLevelRange(daily.level, saved.percent)
+        ? saved.percent
+        : daily.percent;
+    setFortuneData({
+      level: daily.level,
+      emoji: daily.emoji,
+      percent,
+      message: saved.message || pickFallbackSlogan(isEnglish, daily.level, percent),
+      suggestedTime: saved.suggestedTime || '',
+      energyPercent: percent,
+      beatPercent: 0,
+      catUrl: '',
+    });
+    setHasTodayDraw(true);
+  }, [isEnglish]);
+
+  const openTodayResult = useCallback(() => {
+    if (!hasTodayDraw || !fortuneData.level) return;
+    setShowSharePrompt(false);
+    setTheme(LEVEL_THEMES[fortuneData.level] || 'default');
+    setShowResult(true);
+    if (!isOffline && fortuneData.beatPercent <= 0) {
+      void utils.leaderboard.beatPercent
+        .fetch({ percent: fortuneData.percent })
+        .then(res => {
+          if (res.beatPercent != null && res.beatPercent > 0) {
+            setFortuneData(prev => ({ ...prev, beatPercent: res.beatPercent! }));
+          }
+        })
+        .catch(() => undefined);
+    }
+  }, [
+    fortuneData.beatPercent,
+    fortuneData.level,
+    fortuneData.percent,
+    hasTodayDraw,
+    isOffline,
+    utils,
+  ]);
+
   const handleSpinComplete = useCallback(async (result: { level: string; emoji: string; percent: number; catUrl?: string }) => {
+    setShowSharePrompt(false);
     const timesMap = isEnglish ? SUGGESTED_TIMES_EN : SUGGESTED_TIMES;
     const times = timesMap[result.level] || timesMap['小吉'];
-    const suggestedTime = times[Math.floor(Math.random() * times.length)];
-    const energyPercent = Math.min(100, Math.max(10, result.percent + Math.floor(Math.random() * 20) - 10));
-    const beatPercent = Math.floor(Math.random() * 20) + 75;
+    const seedOffset = result.percent % times.length;
+    const suggestedTime = times[seedOffset] || times[0];
+    const energyPercent = result.percent;
+    const day = todayKey();
+
+    if (import.meta.env.DEV && !percentInLevelRange(result.level, result.percent)) {
+      console.warn('[moyu] percent outside level range', result);
+    }
 
     setFortuneData({
       level: result.level,
@@ -153,13 +230,26 @@ export default function Home() {
       message: t('fortune.drawing'),
       suggestedTime,
       energyPercent,
-      beatPercent,
+      beatPercent: 0,
       catUrl: result.catUrl || '',
     });
+
+    if (!isOffline) {
+      void utils.leaderboard.beatPercent
+        .fetch({ percent: result.percent })
+        .then(res => {
+          if (res.beatPercent != null && res.beatPercent > 0) {
+            setFortuneData(prev => ({ ...prev, beatPercent: res.beatPercent! }));
+          }
+        })
+        .catch(() => undefined);
+    }
 
     const newTheme = LEVEL_THEMES[result.level] || 'default';
     setTheme(newTheme);
     setShowResult(true);
+    setHasTodayDraw(true);
+    track('draw', { level: result.level, percent: result.percent });
 
     if (result.level === '大吉') {
       play('jackpot');
@@ -174,27 +264,39 @@ export default function Home() {
     }
 
     setIsLoadingSlogan(true);
-    let finalMessage = '';
-    try {
-      const sloganResult = await generateSloganMutation.mutateAsync({
-        level: result.level,
-        percent: result.percent,
-        language: isEnglish ? 'en' : 'zh',
-      });
-      finalMessage = sloganResult.slogan;
-      setFortuneData(prev => ({ ...prev, message: sloganResult.slogan }));
-    } catch (error) {
-      console.error('生成文案失败:', error);
-      const fallbackMessages = isEnglish ? FALLBACK_MESSAGES_EN : FALLBACK_MESSAGES_ZH;
-      finalMessage = fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
-      setFortuneData(prev => ({ ...prev, message: finalMessage }));
-    } finally {
-      setIsLoadingSlogan(false);
+    let finalMessage = pickFallbackSlogan(isEnglish, result.level, result.percent);
+    setFortuneData(prev => ({ ...prev, message: finalMessage }));
+    setIsLoadingSlogan(false);
+
+    if (!isOffline && !staticMode) {
+      void generateSloganMutation
+        .mutateAsync({
+          level: result.level,
+          percent: result.percent,
+          language: isEnglish ? 'en' : 'zh',
+        })
+        .then(sloganResult => {
+          finalMessage = sloganResult.slogan;
+          setFortuneData(prev => ({ ...prev, message: sloganResult.slogan }));
+          try {
+            const raw = localStorage.getItem(TODAY_DRAW_KEY);
+            if (raw) {
+              const prev = JSON.parse(raw);
+              localStorage.setItem(
+                TODAY_DRAW_KEY,
+                JSON.stringify({ ...prev, message: sloganResult.slogan })
+              );
+            }
+          } catch { /* ignore */ }
+        })
+        .catch(() => {
+          /* keep local slogan */
+        });
     }
 
     try {
       await saveRecord({
-        date: new Date().toISOString().split('T')[0],
+        date: day,
         level: result.level,
         emoji: result.emoji,
         percent: result.percent,
@@ -202,43 +304,68 @@ export default function Home() {
         suggestedTime,
         avatar: selectedAvatar,
       });
-    } catch (e) { /* 静默失败 */ }
+    } catch { /* 静默失败 */ }
 
-    if (user && !isOffline) {
-      try {
-        await recordDrawMutation.mutateAsync({
+    try {
+      localStorage.setItem(
+        TODAY_DRAW_KEY,
+        JSON.stringify({
+          date: day,
           level: result.level,
           emoji: result.emoji,
           percent: result.percent,
           message: finalMessage,
           suggestedTime,
-          avatar: selectedAvatar,
-        });
-        refetchDrawLimit();
-      } catch (e) { /* 静默失败 */ }
+        })
+      );
+    } catch { /* ignore */ }
+
+    // Device-first ledger: always enqueue + flush (no cookie/user gate)
+    if (!staticMode) {
+      enqueueDraw({
+        date: day,
+        level: result.level,
+        emoji: result.emoji,
+        percent: result.percent,
+        message: finalMessage,
+        suggestedTime,
+        avatar: selectedAvatar,
+      });
+      if (!isOffline) void flushDrawOutbox();
     }
 
-    // 更新连续签到
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = day;
+      const yesterday = yesterdayKey();
       const saved = localStorage.getItem('moyu-streak');
       let newCount = 1;
       if (saved) {
         const { count, lastDate } = JSON.parse(saved);
-        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
         if (lastDate === yesterday) newCount = count + 1;
         else if (lastDate === today) newCount = count;
       }
       localStorage.setItem('moyu-streak', JSON.stringify({ count: newCount, lastDate: today }));
-    } catch (_e) { /* ignore */ }
+      setStreak(newCount);
+    } catch { /* ignore */ }
 
-    // 首次抽签后显示分享引导
-    const hasShownPrompt = sessionStorage.getItem('moyu-share-prompted');
-    if (!hasShownPrompt) {
-      setShowSharePrompt(true);
-      sessionStorage.setItem('moyu-share-prompted', '1');
-    }
-  }, [generateSloganMutation, recordDrawMutation, user, selectedAvatar, refetchDrawLimit, isEnglish, t, isOffline, saveRecord]);
+    try {
+      if (!localStorage.getItem(SHARE_PROMPTED_KEY)) {
+        sessionStorage.setItem(PENDING_SHARE_KEY, '1');
+      }
+    } catch { /* ignore */ }
+  }, [generateSloganMutation, selectedAvatar, isEnglish, t, isOffline, saveRecord, staticMode, utils, play]);
+
+  const dismissResult = useCallback(() => {
+    setShowResult(false);
+    setTheme('default');
+    try {
+      if (sessionStorage.getItem(PENDING_SHARE_KEY) === '1') {
+        sessionStorage.removeItem(PENDING_SHARE_KEY);
+        localStorage.setItem(SHARE_PROMPTED_KEY, '1');
+        setShowSharePrompt(true);
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   const themeClass = {
     default: 'theme-default',
@@ -269,9 +396,21 @@ export default function Home() {
         
         {/* ===== 头部 ===== */}
         <header className="flex items-center justify-between py-2 flex-shrink-0 animate-fade-in-up">
-          <div className="w-8 h-8 flex items-center justify-center">
-            <Fish className="w-4.5 h-4.5 text-amber-400/70" style={{ filter: 'drop-shadow(0 0 6px rgba(255,180,50,0.3))' }} />
-          </div>
+          {showResult ? (
+            <button
+              type="button"
+              onClick={dismissResult}
+              aria-label={isEnglish ? 'Back to home' : '返回主页'}
+              title={isEnglish ? 'Back to home' : '返回主页'}
+              className="w-8 h-8 rounded-full flex items-center justify-center bg-white/[0.05] border border-white/[0.06] hover:bg-white/[0.09] active:scale-90 transition-all"
+            >
+              <Fish className="w-4.5 h-4.5 text-amber-400/80" style={{ filter: 'drop-shadow(0 0 6px rgba(255,180,50,0.35))' }} />
+            </button>
+          ) : (
+            <div className="w-8 h-8 flex items-center justify-center" aria-hidden="true">
+              <Fish className="w-4.5 h-4.5 text-amber-400/70" style={{ filter: 'drop-shadow(0 0 6px rgba(255,180,50,0.3))' }} />
+            </div>
+          )}
 
           <div className="flex items-center gap-1">
             <LanguageSwitch />
@@ -333,7 +472,7 @@ export default function Home() {
           <p 
             className="text-white/15 text-[8px] mt-2 tracking-[5px] uppercase font-medium"
           >
-            {isEnglish ? 'Fortune Telling for Slackers' : 'MOYU FORTUNE · 摸鱼运势'}
+            {isEnglish ? 'Daily fortune for slackers' : '每天一签 · 摸鱼运势'}
           </p>
           {/* 连续签到徽章 */}
           {streak > 0 && (
@@ -356,7 +495,12 @@ export default function Home() {
               isSpinning={isSpinning}
               setIsSpinning={setIsSpinning}
               selectedAvatar={selectedAvatar}
-              onSpinStart={() => play('spin')}
+              locked={hasTodayDraw}
+              onLockedClick={openTodayResult}
+              onSpinStart={() => {
+                setShowSharePrompt(false);
+                play('spin');
+              }}
               onReelStop={(index) => {
                 if (index === 2) {
                   stop('spin');
@@ -381,7 +525,10 @@ export default function Home() {
                 visible={showResult}
                 isLoadingSlogan={isLoadingSlogan}
                 catUrl={fortuneData.catUrl}
-                onTryAgain={() => setShowResult(false)}
+                onBack={dismissResult}
+                onOpenCard={() => setPosterOpen(true)}
+                onOpenAvatar={() => setAvatarPanelOpen(true)}
+                streak={streak}
               />
             </div>
           )}
@@ -393,11 +540,13 @@ export default function Home() {
               <div className="flex justify-center animate-fade-in-up delay-300">
                 <CoinButton 
                   onClick={() => {
+                    setShowSharePrompt(false);
                     if (slotMachineRef.current) {
                       slotMachineRef.current.spin();
                     }
                   }}
                   disabled={isSpinning}
+                  mode={hasTodayDraw ? 'view' : 'draw'}
                   selectedAvatar={selectedAvatar}
                   onHoverSound={() => play('coinTouch')}
                 />
@@ -413,16 +562,11 @@ export default function Home() {
                 <MoyuTips />
               </div>
               
-              {/* 抽签限制 */}
-              {user && drawLimit && !drawLimit.isVip && (
+              {/* 铁律 3/4：不展示每日次数门禁，抽签与卡片永不收费 */}
+              {staticMode && (
                 <div className="text-center">
-                  <span className="text-amber-200/30 text-[10px]">
-                    {t('fortune.remainingDraws', { count: drawLimit.remaining })}
-                    {drawLimit.remaining === 0 && (
-                      <Link href="/membership" className="text-amber-300/60 ml-1 underline">
-                        {t('membership.subscribe')}
-                      </Link>
-                    )}
+                  <span className="text-amber-200/25 text-[10px]">
+                    {isEnglish ? 'Static demo · unlimited local draws' : '静态演示 · 本机无限次抽签'}
                   </span>
                 </div>
               )}
@@ -436,17 +580,18 @@ export default function Home() {
           <div className="flex gap-2">
             {[
               { href: '/history', icon: <History className="w-[18px] h-[18px]" />, label: t('history.title') },
-              { href: '/leaderboard', icon: <Trophy className="w-[18px] h-[18px]" />, label: isEnglish ? 'Ranking' : '排行榜' },
-              { href: '/golden-time', icon: <Timer className="w-[18px] h-[18px]" />, label: isEnglish ? 'Golden Time' : '黄金时段' },
-              { href: '/invite', icon: <Gift className="w-[18px] h-[18px]" />, label: t('invite.title') },
+              { href: '/leaderboard', icon: <Trophy className="w-[18px] h-[18px]" />, label: isEnglish ? 'Board' : '排行', secondary: true },
             ].map((item) => (
               <Link key={item.href} href={item.href} className="flex-1">
                 <button 
                   className="w-full flex flex-col items-center gap-1.5 py-3 rounded-xl transition-all duration-200 active:scale-[0.95] group hover:bg-white/[0.09]"
                   style={{
                     background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,180,50,0.08)',
+                    border: item.secondary
+                      ? '1px solid rgba(255,255,255,0.06)'
+                      : '1px solid rgba(255,180,50,0.08)',
                     backdropFilter: 'blur(8px)',
+                    opacity: item.secondary ? 0.75 : 1,
                   }}
                 >
                   <span className="text-amber-400/60 group-hover:text-amber-400 group-hover:scale-110 group-hover:drop-shadow-[0_0_8px_rgba(255,180,50,0.5)] transition-all duration-200">{item.icon}</span>
@@ -456,29 +601,6 @@ export default function Home() {
             ))}
           </div>
           
-          {/* VIP CTA - 金色渐变按钮 */}
-          <Link href="/membership">
-            <button 
-              className="w-full flex items-center justify-center gap-2 py-2.5 text-[12px] font-bold text-white rounded-2xl relative overflow-hidden transition-all duration-200 hover:brightness-110 active:scale-[0.97]"
-              style={{
-                background: 'linear-gradient(135deg, #FFB300 0%, #FF8F00 40%, #F57C00 100%)',
-                boxShadow: '0 4px 20px rgba(255,152,0,0.25), 0 1px 4px rgba(0,0,0,0.08), inset 0 1px 2px rgba(255,255,255,0.3)',
-                letterSpacing: '0.8px',
-              }}
-            >
-              {/* 流光效果 */}
-              <div 
-                className="absolute inset-0 pointer-events-none"
-                style={{
-                  background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%)',
-                  animation: 'btn-shimmer 3s ease-in-out infinite',
-                }}
-              />
-              <Crown className="w-4 h-4 relative z-10" />
-              <span className="relative z-10">{t('membership.unlockMore')}</span>
-            </button>
-          </Link>
-
           {/* 底部品牌 */}
           <div className="text-center flex items-center justify-center gap-2 pb-1">
             <a
@@ -487,6 +609,20 @@ export default function Home() {
             >
               {t('app.footer')}
             </a>
+            <span className="text-white/10">·</span>
+            <Link
+              href="/privacy"
+              className="text-white/20 text-[9px] hover:text-white/40 transition-colors"
+            >
+              {isEnglish ? "Privacy" : "隐私"}
+            </Link>
+            <span className="text-white/10">·</span>
+            <Link
+              href="/membership"
+              className="text-white/20 text-[9px] hover:text-white/40 transition-colors"
+            >
+              {isEnglish ? "Support plan" : "支持计划"}
+            </Link>
             <span className="text-white/10">·</span>
             <button
               onClick={() => setFeedbackOpen(true)}
@@ -519,10 +655,11 @@ export default function Home() {
 
       {/* 海报生成器 - 条件渲染 */}
       {posterOpen && (
-        <PosterGenerator
+      <PosterGenerator
           isOpen={posterOpen}
           onClose={() => setPosterOpen(false)}
           fortuneData={fortuneData}
+          streak={streak}
         />
       )}
 

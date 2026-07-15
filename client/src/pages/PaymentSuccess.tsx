@@ -5,6 +5,8 @@ import { CheckCircle, Home, Crown } from "lucide-react";
 import confetti from "canvas-confetti";
 import PageLayout from "@/components/PageLayout";
 import GlassCard from "@/components/GlassCard";
+import { trpc } from "@/lib/trpc";
+import { isFullBackend } from "@/lib/staticMode";
 
 export default function PaymentSuccess() {
   const { i18n } = useTranslation();
@@ -12,6 +14,8 @@ export default function PaymentSuccess() {
   const searchString = useSearch();
   const params = new URLSearchParams(searchString);
   const sessionId = params.get("session_id");
+  const full = isFullBackend();
+  const confirm = trpc.stripe.confirmCheckoutSession.useMutation();
 
   useEffect(() => {
     confetti({
@@ -21,6 +25,13 @@ export default function PaymentSuccess() {
       colors: ["#FFB32C", "#FF8C00", "#22c55e"],
     });
   }, []);
+
+  useEffect(() => {
+    if (full && sessionId) {
+      confirm.mutate({ sessionId });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [full, sessionId]);
 
   return (
     <PageLayout>
