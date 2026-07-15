@@ -72,6 +72,7 @@ import {
   serial,
   text,
   timestamp,
+  uniqueIndex,
   varchar
 } from "drizzle-orm/pg-core";
 var userRoleEnum, subscriptionStatusEnum, subscriptionPlanEnum, purchaseStatusEnum, feedbackTypeEnum, feedbackStatusEnum, notificationTypeEnum, analyticsEvents, users, subscriptions, purchases, fortuneHistory, dailyDrawCount, invitations, feedback, notifications;
@@ -118,6 +119,7 @@ var init_schema = __esm({
       "analytics_events",
       {
         id: bigserial("id", { mode: "number" }).primaryKey(),
+        eventId: varchar("event_id", { length: 128 }).notNull(),
         event: varchar("event", { length: 32 }).notNull(),
         deviceId: varchar("device_id", { length: 128 }).notNull(),
         props: jsonb("props"),
@@ -127,6 +129,7 @@ var init_schema = __esm({
         createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
       },
       (table) => [
+        uniqueIndex("analytics_events_event_id_uidx").on(table.eventId),
         index("analytics_events_client_occurred_at_idx").on(
           table.clientOccurredAt
         ),
@@ -3261,6 +3264,7 @@ a{color:var(--gold);text-decoration:none}a:hover{text-decoration:underline}
 init_schema();
 init_db();
 init_deviceUser();
+import { createHash as createHash3 } from "node:crypto";
 import { sql as sql7 } from "drizzle-orm";
 var ALLOWED_EVENTS = /* @__PURE__ */ new Set([
   "draw",
@@ -3284,6 +3288,22 @@ var ALLOWED_PROP_KEYS = /* @__PURE__ */ new Set([
 var MAX_BATCH = 50;
 var MAX_CLIENT_AGE_MS = 31 * 24 * 60 * 60 * 1e3;
 var MAX_CLOCK_SKEW_MS = 5 * 60 * 1e3;
+function normalizeEventId(value) {
+  if (typeof value !== "string") return null;
+  const eventId = value.trim();
+  return /^[a-zA-Z0-9._:-]{8,128}$/.test(eventId) ? eventId : null;
+}
+function fallbackAnalyticsEventId(input) {
+  const sortedProps = input.props ? Object.fromEntries(
+    Object.entries(input.props).sort(
+      ([left], [right]) => left.localeCompare(right)
+    )
+  ) : null;
+  const digest = createHash3("sha256").update(
+    JSON.stringify([input.deviceId, input.event, input.t ?? "", sortedProps])
+  ).digest("hex");
+  return `legacy-${digest}`;
+}
 function sanitizeProps(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const result = {};
@@ -3313,12 +3333,26 @@ async function ensureAnalyticsSchema() {
   await db.execute(sql7`
     CREATE TABLE IF NOT EXISTS analytics_events (
       id BIGSERIAL PRIMARY KEY,
+      event_id VARCHAR(128) NOT NULL,
       event VARCHAR(32) NOT NULL,
       device_id VARCHAR(128) NOT NULL,
       props JSONB,
       client_occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+  await db.execute(sql7`
+    ALTER TABLE analytics_events
+    ADD COLUMN IF NOT EXISTS event_id VARCHAR(128)
+  `);
+  await db.execute(sql7`
+    UPDATE analytics_events
+    SET event_id = 'legacy-' || id::text
+    WHERE event_id IS NULL
+  `);
+  await db.execute(sql7`
+    ALTER TABLE analytics_events
+    ALTER COLUMN event_id SET NOT NULL
   `);
   await db.execute(sql7`
     ALTER TABLE analytics_events
@@ -3336,6 +3370,10 @@ async function ensureAnalyticsSchema() {
   await db.execute(sql7`
     ALTER TABLE analytics_events
     ALTER COLUMN client_occurred_at SET NOT NULL
+  `);
+  await db.execute(sql7`
+    CREATE UNIQUE INDEX IF NOT EXISTS analytics_events_event_id_uidx
+    ON analytics_events (event_id)
   `);
   await db.execute(sql7`
     CREATE INDEX IF NOT EXISTS analytics_events_client_occurred_at_idx
@@ -3363,17 +3401,29 @@ function registerAnalyticsApi(app) {
         const eventName = typeof item.event === "string" ? item.event : "";
         const deviceId = normalizeDeviceId(item.deviceId);
         if (!ALLOWED_EVENTS.has(eventName) || !deviceId) return [];
+        const props = sanitizeProps(item.props);
+        const eventId = normalizeEventId(item.eventId) || fallbackAnalyticsEventId({
+          event: eventName,
+          deviceId,
+          t: item.t,
+          props
+        });
         return [
           {
+            eventId,
             event: eventName,
             deviceId,
-            props: sanitizeProps(item.props),
+            props,
             clientOccurredAt: validatedClientTime(item.t)
           }
         ];
       });
-      if (values.length) await db.insert(analyticsEvents).values(values);
-      return res.json({ ok: true, accepted: values.length });
+      const inserted = values.length ? await db.insert(analyticsEvents).values(values).onConflictDoNothing({ target: analyticsEvents.eventId }).returning({ eventId: analyticsEvents.eventId }) : [];
+      return res.json({
+        ok: true,
+        accepted: inserted.length,
+        duplicates: values.length - inserted.length
+      });
     } catch (error) {
       console.warn("[analytics]", error);
       return res.status(500).json({ ok: false });
