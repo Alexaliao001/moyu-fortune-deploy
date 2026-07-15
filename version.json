@@ -1,1 +1,5 @@
-{"sha":"0a15710","version":"ui-focus","note":"compact result actions; remove ops badges","fullBackend":true,"api":"https://moyu-fortune.onrender.com"}
+{
+  "version": "validation-d0",
+  "releaseDate": "2026-07-15",
+  "note": "真实指标、归因、隐私说明与 7 天验证基线"
+}
