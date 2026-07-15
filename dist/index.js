@@ -43,6 +43,7 @@ var init_const = __esm({
 // drizzle/schema.ts
 var schema_exports = {};
 __export(schema_exports, {
+  analyticsEvents: () => analyticsEvents,
   dailyDrawCount: () => dailyDrawCount,
   feedback: () => feedback,
   feedbackStatusEnum: () => feedbackStatusEnum,
@@ -60,9 +61,12 @@ __export(schema_exports, {
   users: () => users
 });
 import {
+  bigserial,
   boolean,
   date,
+  index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   serial,
@@ -70,7 +74,7 @@ import {
   timestamp,
   varchar
 } from "drizzle-orm/pg-core";
-var userRoleEnum, subscriptionStatusEnum, subscriptionPlanEnum, purchaseStatusEnum, feedbackTypeEnum, feedbackStatusEnum, notificationTypeEnum, users, subscriptions, purchases, fortuneHistory, dailyDrawCount, invitations, feedback, notifications;
+var userRoleEnum, subscriptionStatusEnum, subscriptionPlanEnum, purchaseStatusEnum, feedbackTypeEnum, feedbackStatusEnum, notificationTypeEnum, analyticsEvents, users, subscriptions, purchases, fortuneHistory, dailyDrawCount, invitations, feedback, notifications;
 var init_schema = __esm({
   "drizzle/schema.ts"() {
     "use strict";
@@ -110,6 +114,32 @@ var init_schema = __esm({
       "system",
       "reward"
     ]);
+    analyticsEvents = pgTable(
+      "analytics_events",
+      {
+        id: bigserial("id", { mode: "number" }).primaryKey(),
+        event: varchar("event", { length: 32 }).notNull(),
+        deviceId: varchar("device_id", { length: 128 }).notNull(),
+        props: jsonb("props"),
+        clientOccurredAt: timestamp("client_occurred_at", {
+          withTimezone: true
+        }).notNull(),
+        createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+      },
+      (table) => [
+        index("analytics_events_client_occurred_at_idx").on(
+          table.clientOccurredAt
+        ),
+        index("analytics_events_event_occurred_idx").on(
+          table.event,
+          table.clientOccurredAt
+        ),
+        index("analytics_events_device_occurred_idx").on(
+          table.deviceId,
+          table.clientOccurredAt
+        )
+      ]
+    );
     users = pgTable("users", {
       id: serial("id").primaryKey(),
       openId: varchar("openId", { length: 64 }).notNull().unique(),
@@ -1382,47 +1412,13 @@ var stripe = new Proxy({}, {
 
 // server/stripe/products.ts
 var PRODUCTS = {
-  // 单次付费报告
-  DETAILED_REPORT: {
-    name: "\u6478\u9C7C\u8FD0\u52BF\u8BE6\u7EC6\u62A5\u544A",
-    description: "AI\u751F\u6210\u7684\u4E2A\u6027\u5316\u6478\u9C7C\u6307\u5357\uFF0C\u5305\u542B\u6700\u4F73\u6478\u9C7C\u65F6\u6BB5\u3001\u672C\u5468\u8FD0\u52BF\u8D8B\u52BF\u3001\u804C\u573A\u751F\u5B58\u5EFA\u8BAE",
-    priceInCents: 990,
-    // ¥9.9
-    currency: "cny",
-    mode: "payment"
-  },
-  // 月度会员（一次性付款，支持支付宝/微信）
-  MONTHLY_MEMBERSHIP: {
-    name: "\u6478\u9C7C\u4F1A\u5458 - \u6708\u5361",
-    description: "\u65E0\u9650\u62BD\u7B7E\u3001\u5386\u53F2\u8BB0\u5F55\u3001\u53BB\u5E7F\u544A\u3001\u4E13\u5C5E\u5934\u50CF\uFF0830\u5929\u6709\u6548\uFF09",
-    priceInCents: 1990,
-    // ¥19.9
-    currency: "cny",
-    mode: "payment",
-    durationDays: 30
-    // 会员有效期天数
-  },
-  // 季度会员（一次性付款，支持支付宝/微信）
-  QUARTERLY_MEMBERSHIP: {
-    name: "\u6478\u9C7C\u4F1A\u5458 - \u5B63\u5361",
-    description: "\u65E0\u9650\u62BD\u7B7E\u3001\u5386\u53F2\u8BB0\u5F55\u3001\u53BB\u5E7F\u544A\u3001\u4E13\u5C5E\u5934\u50CF\u3001\u6BCF\u5468\u8FD0\u52BF\u62A5\u544A\uFF0890\u5929\u6709\u6548\uFF09",
-    priceInCents: 4990,
-    // ¥49.9
-    currency: "cny",
-    mode: "payment",
-    durationDays: 90
-    // 会员有效期天数
-  },
-  // 永久会员（一次性付款，支持支付宝/微信）
   LIFETIME_MEMBERSHIP: {
-    name: "\u6478\u9C7C\u4F1A\u5458 - \u6C38\u4E45\u5361",
-    description: "\u4E00\u6B21\u4ED8\u6B3E\uFF0C\u6C38\u4E45\u4EAB\u6709\u5168\u90E8\u4F1A\u5458\u6743\u76CA\uFF0C\u652F\u6301\u652F\u4ED8\u5B9D/\u5FAE\u4FE1\u652F\u4ED8",
+    name: "\u6478\u4E86\u4E48\u6C38\u4E45\u652F\u6301\u8BA1\u5212",
+    description: "\u4E00\u6B21\u6027\u4E70\u65AD\uFF0C\u4E0D\u542B\u8BA2\u9605\uFF1B\u62BD\u7B7E\u3001\u7ED3\u679C\u4E0E\u7B7E\u6587\u5361\u7247\u59CB\u7EC8\u514D\u8D39",
     priceInCents: 4990,
-    // ￥49.9
     currency: "cny",
     mode: "payment",
     durationDays: -1
-    // -1 表示永久
   }
 };
 
@@ -1441,18 +1437,7 @@ function getMembershipDuration(productKey) {
   return 0;
 }
 function getMembershipPlan(productKey) {
-  switch (productKey) {
-    case "MONTHLY_MEMBERSHIP":
-      return "monthly";
-    case "QUARTERLY_MEMBERSHIP":
-      return "quarterly";
-    case "ANNUAL_MEMBERSHIP":
-      return "annual";
-    case "LIFETIME_MEMBERSHIP":
-      return "lifetime";
-    default:
-      return null;
-  }
+  return productKey === "LIFETIME_MEMBERSHIP" ? "lifetime" : null;
 }
 async function activateCheckoutSession(db, session) {
   const userId = parseInt(session.metadata?.user_id || "0", 10);
@@ -1603,13 +1588,7 @@ function checkoutOrigin(req) {
 var stripeRouter = router({
   createCheckoutSession: protectedProcedure.input(
     z4.object({
-      productKey: z4.enum([
-        "DETAILED_REPORT",
-        "MONTHLY_MEMBERSHIP",
-        "QUARTERLY_MEMBERSHIP",
-        "ANNUAL_MEMBERSHIP",
-        "LIFETIME_MEMBERSHIP"
-      ])
+      productKey: z4.literal("LIFETIME_MEMBERSHIP")
     })
   ).mutation(async ({ ctx, input }) => {
     if (!ENV.stripeSecretKey) {
@@ -1704,40 +1683,6 @@ var stripeRouter = router({
     if (!db) return [];
     return db.select().from(purchases).where(eq4(purchases.userId, ctx.user.id)).orderBy(purchases.createdAt);
   }),
-  cancelSubscription: protectedProcedure.mutation(async ({ ctx }) => {
-    const db = await getDb();
-    if (!db) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "db unavailable" });
-    const userSubscription = await db.select().from(subscriptions).where(eq4(subscriptions.userId, ctx.user.id)).limit(1);
-    if (userSubscription.length === 0) {
-      throw new TRPCError4({ code: "NOT_FOUND", message: "No active subscription found" });
-    }
-    if (userSubscription[0].stripeSubscriptionId && ENV.stripeSecretKey) {
-      try {
-        await getStripe().subscriptions.update(userSubscription[0].stripeSubscriptionId, {
-          cancel_at_period_end: true
-        });
-      } catch {
-      }
-    }
-    return { success: true };
-  }),
-  createPortalSession: protectedProcedure.mutation(async ({ ctx }) => {
-    if (!ENV.stripeSecretKey) {
-      throw new TRPCError4({ code: "PRECONDITION_FAILED", message: "Stripe not configured" });
-    }
-    const db = await getDb();
-    if (!db) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "db unavailable" });
-    const userSubscription = await db.select().from(subscriptions).where(eq4(subscriptions.userId, ctx.user.id)).limit(1);
-    if (userSubscription.length === 0 || !userSubscription[0].stripeCustomerId) {
-      throw new TRPCError4({ code: "NOT_FOUND", message: "No customer found" });
-    }
-    const origin = checkoutOrigin(ctx.req);
-    const session = await getStripe().billingPortal.sessions.create({
-      customer: userSubscription[0].stripeCustomerId,
-      return_url: `${origin}/membership`
-    });
-    return { portalUrl: session.url };
-  }),
   /** Fallback when webhook not configured — call from /payment/success */
   confirmCheckoutSession: protectedProcedure.input(z4.object({ sessionId: z4.string().min(1) })).mutation(async ({ ctx, input }) => {
     if (!ENV.stripeSecretKey) {
@@ -1773,15 +1718,6 @@ var VIP_AVATARS = [
   { emoji: "\u{1F52E}", name: "\u6C34\u6676\u7403", requiredLevel: "annual" }
 ];
 var FREE_AVATARS = ["\u{1F431}", "\u{1F436}", "\u{1F43C}", "\u{1F98A}", "\u{1F428}", "\u{1F42F}", "\u{1F438}", "\u{1F435}"];
-var INVITE_REWARD_DAYS = 3;
-function generateInviteCode() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 8; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return code;
-}
 var deviceIdInput = z5.string().min(8).max(80).regex(/^[a-zA-Z0-9_-]+$/);
 async function userFromDeviceCtx(ctx, deviceId, name) {
   const resolved = await resolveWriteUser({
@@ -1891,140 +1827,6 @@ var memberRouter = router({
       isVip,
       plan
     };
-  }),
-  getInviteCode: publicProcedure.input(z5.object({ deviceId: deviceIdInput.optional() }).optional()).query(async ({ ctx, input }) => {
-    const db = await getDb();
-    if (!db) {
-      return { inviteCode: null };
-    }
-    const user = await userFromDeviceCtx(ctx, input?.deviceId);
-    if (user.inviteCode) {
-      return { inviteCode: user.inviteCode };
-    }
-    let inviteCode3 = generateInviteCode();
-    let attempts = 0;
-    while (attempts < 10) {
-      const existing = await db.select().from(users).where(eq6(users.inviteCode, inviteCode3)).limit(1);
-      if (existing.length === 0) break;
-      inviteCode3 = generateInviteCode();
-      attempts++;
-    }
-    await db.update(users).set({ inviteCode: inviteCode3 }).where(eq6(users.id, user.id));
-    return { inviteCode: inviteCode3 };
-  }),
-  applyInviteCode: publicProcedure.input(
-    z5.object({
-      deviceId: deviceIdInput.optional(),
-      inviteCode: z5.string()
-    })
-  ).mutation(async ({ ctx, input }) => {
-    const db = await getDb();
-    if (!db) {
-      throw new TRPCError5({
-        code: "INTERNAL_SERVER_ERROR",
-        message: "\u6570\u636E\u5E93\u4E0D\u53EF\u7528"
-      });
-    }
-    const currentUser = await userFromDeviceCtx(ctx, input.deviceId);
-    if (currentUser.invitedBy) {
-      throw new TRPCError5({ code: "BAD_REQUEST", message: "\u60A8\u5DF2\u4F7F\u7528\u8FC7\u9080\u8BF7\u7801" });
-    }
-    const inviter = await db.select().from(users).where(eq6(users.inviteCode, input.inviteCode.toUpperCase())).limit(1);
-    if (inviter.length === 0) {
-      throw new TRPCError5({ code: "NOT_FOUND", message: "\u9080\u8BF7\u7801\u65E0\u6548" });
-    }
-    if (inviter[0].id === currentUser.id) {
-      throw new TRPCError5({ code: "BAD_REQUEST", message: "\u4E0D\u80FD\u4F7F\u7528\u81EA\u5DF1\u7684\u9080\u8BF7\u7801" });
-    }
-    await db.update(users).set({ invitedBy: inviter[0].id }).where(eq6(users.id, currentUser.id));
-    await db.insert(invitations).values({
-      inviterId: inviter[0].id,
-      inviteeId: currentUser.id,
-      rewardDays: INVITE_REWARD_DAYS,
-      rewardClaimed: false
-    });
-    return { success: true, inviterName: inviter[0].name || "\u6478\u9C7C\u8FBE\u4EBA" };
-  }),
-  getInviteStats: publicProcedure.input(z5.object({ deviceId: deviceIdInput.optional() }).optional()).query(async ({ ctx, input }) => {
-    const db = await getDb();
-    if (!db) {
-      return { totalInvites: 0, claimedRewards: 0, pendingRewards: 0, inviteList: [] };
-    }
-    const user = await resolveWriteUser({
-      cookieUser: ctx.user,
-      deviceId: input?.deviceId || deviceIdFromReq(ctx.req)
-    });
-    if (!user) {
-      return { totalInvites: 0, claimedRewards: 0, pendingRewards: 0, inviteList: [] };
-    }
-    const inviteList = await db.select({
-      id: invitations.id,
-      inviteeId: invitations.inviteeId,
-      rewardDays: invitations.rewardDays,
-      rewardClaimed: invitations.rewardClaimed,
-      createdAt: invitations.createdAt,
-      inviteeName: users.name
-    }).from(invitations).leftJoin(users, eq6(invitations.inviteeId, users.id)).where(eq6(invitations.inviterId, user.id)).orderBy(desc(invitations.createdAt));
-    const totalInvites = inviteList.length;
-    const claimedRewards = inviteList.filter((i) => i.rewardClaimed).reduce((sum, i) => sum + i.rewardDays, 0);
-    const pendingRewards = inviteList.filter((i) => !i.rewardClaimed).reduce((sum, i) => sum + i.rewardDays, 0);
-    return {
-      totalInvites,
-      claimedRewards,
-      pendingRewards,
-      inviteList: inviteList.map((i) => ({
-        id: i.id,
-        inviteeName: i.inviteeName || "\u6478\u9C7C\u65B0\u4EBA",
-        rewardDays: i.rewardDays,
-        rewardClaimed: i.rewardClaimed,
-        createdAt: i.createdAt
-      }))
-    };
-  }),
-  claimInviteReward: publicProcedure.input(
-    z5.object({
-      deviceId: deviceIdInput.optional(),
-      invitationId: z5.number()
-    })
-  ).mutation(async ({ ctx, input }) => {
-    const db = await getDb();
-    if (!db) {
-      throw new TRPCError5({
-        code: "INTERNAL_SERVER_ERROR",
-        message: "\u6570\u636E\u5E93\u4E0D\u53EF\u7528"
-      });
-    }
-    const user = await userFromDeviceCtx(ctx, input.deviceId);
-    const invitation = await db.select().from(invitations).where(
-      and(
-        eq6(invitations.id, input.invitationId),
-        eq6(invitations.inviterId, user.id)
-      )
-    ).limit(1);
-    if (invitation.length === 0) {
-      throw new TRPCError5({ code: "NOT_FOUND", message: "\u9080\u8BF7\u8BB0\u5F55\u4E0D\u5B58\u5728" });
-    }
-    if (invitation[0].rewardClaimed) {
-      throw new TRPCError5({ code: "BAD_REQUEST", message: "\u5956\u52B1\u5DF2\u9886\u53D6" });
-    }
-    await db.update(invitations).set({ rewardClaimed: true }).where(eq6(invitations.id, input.invitationId));
-    const userSubscription = await db.select().from(subscriptions).where(eq6(subscriptions.userId, user.id)).limit(1);
-    if (userSubscription.length > 0) {
-      await db.update(subscriptions).set({
-        bonusDays: (userSubscription[0].bonusDays || 0) + invitation[0].rewardDays
-      }).where(eq6(subscriptions.id, userSubscription[0].id));
-    } else {
-      const endDate = /* @__PURE__ */ new Date();
-      endDate.setDate(endDate.getDate() + invitation[0].rewardDays);
-      await db.insert(subscriptions).values({
-        userId: user.id,
-        status: "active",
-        plan: "monthly",
-        currentPeriodEnd: endDate,
-        bonusDays: 0
-      });
-    }
-    return { success: true, rewardDays: invitation[0].rewardDays };
   })
 });
 
@@ -2247,8 +2049,8 @@ var leaderboardRouter = router({
         ORDER BY cs.streak_length DESC, cs.last_date DESC
         LIMIT ${limit}
       `);
-    const rankings = asRows(result).map((row, index) => ({
-      rank: index + 1,
+    const rankings = asRows(result).map((row, index2) => ({
+      rank: index2 + 1,
       userId: Number(row.userId),
       name: row.name || "\u6478\u9C7C\u8FBE\u4EBA",
       streak: Number(row.streak),
@@ -2338,8 +2140,8 @@ var leaderboardRouter = router({
         ORDER BY best_level_weight DESC, best_percent DESC, total_draws DESC
         LIMIT ${limit}
       `);
-    const rankings = asRows(result).map((row, index) => ({
-      rank: index + 1,
+    const rankings = asRows(result).map((row, index2) => ({
+      rank: index2 + 1,
       userId: Number(row.userId),
       name: row.name || "\u6478\u9C7C\u8FBE\u4EBA",
       bestLevel: row.best_level,
@@ -2507,8 +2309,6 @@ async function createContext(opts) {
 import { Router } from "express";
 init_env();
 init_db();
-init_schema();
-import { eq as eq10 } from "drizzle-orm";
 var webhookRouter = Router();
 webhookRouter.post(
   "/api/stripe/webhook",
@@ -2547,33 +2347,6 @@ webhookRouter.post(
           console.log(
             `[Webhook] checkout.session.completed user=${session.metadata?.user_id} ok=${result.ok} plan=${result.plan ?? "none"}`
           );
-          break;
-        }
-        case "customer.subscription.updated": {
-          const subscription = event.data.object;
-          const subscriptionId = subscription.id;
-          const status = subscription.status;
-          const periodEnd = subscription.current_period_end ? new Date(subscription.current_period_end * 1e3) : /* @__PURE__ */ new Date();
-          let dbStatus = "active";
-          if (status === "canceled") dbStatus = "canceled";
-          else if (status === "past_due") dbStatus = "past_due";
-          await db.update(subscriptions).set({ status: dbStatus, currentPeriodEnd: periodEnd }).where(eq10(subscriptions.stripeSubscriptionId, subscriptionId));
-          console.log(`[Webhook] Subscription ${subscriptionId} updated to ${status}`);
-          break;
-        }
-        case "customer.subscription.deleted": {
-          const subscription = event.data.object;
-          await db.update(subscriptions).set({ status: "canceled" }).where(eq10(subscriptions.stripeSubscriptionId, subscription.id));
-          console.log(`[Webhook] Subscription ${subscription.id} canceled`);
-          break;
-        }
-        case "invoice.payment_failed": {
-          const invoice = event.data.object;
-          const subscriptionId = typeof invoice.subscription === "string" ? invoice.subscription : null;
-          if (subscriptionId) {
-            await db.update(subscriptions).set({ status: "past_due" }).where(eq10(subscriptions.stripeSubscriptionId, subscriptionId));
-            console.log(`[Webhook] Subscription ${subscriptionId} payment failed`);
-          }
           break;
         }
         default:
@@ -2663,7 +2436,6 @@ var DATA_DIR = process.env.MOYU_DATA_DIR || path.join(process.cwd(), "data");
 var DATA_FILE = path.join(DATA_DIR, "moyu-light.json");
 var MAX_DRAWS = 5e3;
 var MAX_FEEDBACK = 2e3;
-var INVITE_REWARD_DAYS2 = 3;
 var VERSION = "sx2b2-1.0";
 var LIBSQL_URL = (process.env.LIBSQL_URL || process.env.DATABASE_URL || "").trim();
 var LIBSQL_TOKEN = (process.env.LIBSQL_AUTH_TOKEN || "").trim();
@@ -2709,7 +2481,7 @@ function httpUrlFromLibsql(url) {
   }
   return url.replace(/\/$/, "");
 }
-async function tursoExec(sql7, args = []) {
+async function tursoExec(sql8, args = []) {
   const base = httpUrlFromLibsql(LIBSQL_URL);
   const res = await fetch(`${base}/v2/pipeline`, {
     method: "POST",
@@ -2722,7 +2494,7 @@ async function tursoExec(sql7, args = []) {
         {
           type: "execute",
           stmt: {
-            sql: sql7,
+            sql: sql8,
             args: args.map((a) => ({
               type: typeof a === "number" ? "integer" : "text",
               value: String(a)
@@ -2807,10 +2579,6 @@ function persist() {
 }
 function id(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${randomBytes2(3).toString("hex")}`;
-}
-function inviteCodeFor(deviceId) {
-  const hash = createHash2("sha256").update(`moyu-invite:${deviceId}`).digest("hex");
-  return hash.slice(0, 8).toUpperCase();
 }
 function upsertProfile(deviceId, name, avatar) {
   const s = getStore();
@@ -2975,92 +2743,6 @@ function listFeedback(limit = 50) {
   const lim = Math.max(1, Math.min(200, limit));
   return getStore().feedback.slice(0, lim);
 }
-function getOrCreateInvite(deviceId) {
-  const idKey = String(deviceId || "").slice(0, 80);
-  if (!idKey) throw new Error("deviceId required");
-  const s = getStore();
-  let row = s.invites.find((i) => i.ownerDeviceId === idKey);
-  if (!row) {
-    let code = inviteCodeFor(idKey);
-    let n = 0;
-    while (s.invites.some((i) => i.code === code && i.ownerDeviceId !== idKey) && n < 5) {
-      code = inviteCodeFor(`${idKey}:${n++}`);
-    }
-    row = { code, ownerDeviceId: idKey, createdAt: (/* @__PURE__ */ new Date()).toISOString() };
-    s.invites.push(row);
-    persist();
-  }
-  return {
-    inviteCode: row.code,
-    ownerDeviceId: row.ownerDeviceId,
-    createdAt: row.createdAt
-  };
-}
-function getInviteStats(deviceId) {
-  const idKey = String(deviceId || "").slice(0, 80);
-  const mine = getStore().inviteUses.filter((u) => u.inviterDeviceId === idKey);
-  const claimedRewards = mine.filter((u) => u.rewardClaimed).reduce((sum, u) => sum + u.rewardDays, 0);
-  const pendingRewards = mine.filter((u) => !u.rewardClaimed).reduce((sum, u) => sum + u.rewardDays, 0);
-  return {
-    totalInvites: mine.length,
-    claimedRewards,
-    pendingRewards,
-    inviteList: mine.map((u) => ({
-      id: u.id,
-      inviteeName: u.inviteeName,
-      rewardDays: u.rewardDays,
-      rewardClaimed: u.rewardClaimed,
-      createdAt: u.createdAt
-    }))
-  };
-}
-function applyInviteCode(input) {
-  const inviteeDeviceId = String(input.deviceId || "").slice(0, 80);
-  const code = String(input.inviteCode || "").trim().toUpperCase().slice(0, 8);
-  if (!inviteeDeviceId) throw new Error("deviceId required");
-  if (code.length !== 8) throw new Error("invalid invite code");
-  const s = getStore();
-  const invite = s.invites.find((i) => i.code === code);
-  if (!invite) throw new Error("invite code not found");
-  if (invite.ownerDeviceId === inviteeDeviceId) {
-    throw new Error("cannot use your own invite code");
-  }
-  if (s.inviteUses.some((u) => u.inviteeDeviceId === inviteeDeviceId)) {
-    throw new Error("invite already applied");
-  }
-  const inviterProfile = s.profiles.find((p) => p.deviceId === invite.ownerDeviceId);
-  const inviteeName = String(input.name || "\u6478\u9C7C\u8FBE\u4EBA").slice(0, 32);
-  const use = {
-    id: id("inv"),
-    code,
-    inviterDeviceId: invite.ownerDeviceId,
-    inviteeDeviceId,
-    inviteeName,
-    rewardDays: INVITE_REWARD_DAYS2,
-    rewardClaimed: false,
-    createdAt: (/* @__PURE__ */ new Date()).toISOString()
-  };
-  s.inviteUses.unshift(use);
-  upsertProfile(inviteeDeviceId, inviteeName);
-  persist();
-  return {
-    inviterName: inviterProfile?.name || "\u6478\u9C7C\u8FBE\u4EBA",
-    rewardDays: INVITE_REWARD_DAYS2,
-    invitationId: use.id
-  };
-}
-function claimInviteReward(input) {
-  const deviceId = String(input.deviceId || "").slice(0, 80);
-  const invitationId = String(input.invitationId || "").slice(0, 64);
-  if (!deviceId || !invitationId) throw new Error("deviceId and invitationId required");
-  const s = getStore();
-  const row = s.inviteUses.find((u) => u.id === invitationId);
-  if (!row || row.inviterDeviceId !== deviceId) throw new Error("invitation not found");
-  if (row.rewardClaimed) throw new Error("reward already claimed");
-  row.rewardClaimed = true;
-  persist();
-  return { rewardDays: row.rewardDays };
-}
 function getProfile(deviceId) {
   const idKey = String(deviceId || "").slice(0, 80);
   if (!idKey) throw new Error("deviceId required");
@@ -3091,7 +2773,7 @@ init_schema();
 init_db();
 init_guestAuth();
 init_deviceUser();
-import { and as and4, desc as desc5, eq as eq11, sql as sql6 } from "drizzle-orm";
+import { and as and4, desc as desc5, eq as eq10, sql as sql6 } from "drizzle-orm";
 function asRows2(result) {
   if (Array.isArray(result)) return result;
   const nested = result?.rows;
@@ -3154,7 +2836,7 @@ async function getHistoryPg(deviceId, limit = 30) {
   const database = await getDb();
   if (!database) return [];
   const lim = Math.max(1, Math.min(100, limit));
-  const rows = await database.select().from(fortuneHistory).where(eq11(fortuneHistory.userId, user.id)).orderBy(desc5(fortuneHistory.createdAt)).limit(lim);
+  const rows = await database.select().from(fortuneHistory).where(eq10(fortuneHistory.userId, user.id)).orderBy(desc5(fortuneHistory.createdAt)).limit(lim);
   return rows.map((r) => ({
     id: String(r.id),
     deviceId: idKey,
@@ -3218,11 +2900,11 @@ async function getLeaderboardPg(limit = 30) {
     ORDER BY cs.streak_length DESC, cs.last_date DESC
     LIMIT ${lim}
   `);
-  const streak = asRows2(streakResult).map((row, index) => {
+  const streak = asRows2(streakResult).map((row, index2) => {
     const openId = String(row.openId || "");
     const deviceId = openId.startsWith("guest_") ? openId.slice(6) : openId;
     return {
-      rank: index + 1,
+      rank: index2 + 1,
       deviceId,
       name: row.name || "\u6478\u9C7C\u8FBE\u4EBA",
       streak: Number(row.streak),
@@ -3242,11 +2924,11 @@ async function getLeaderboardPg(limit = 30) {
     WHERE fh."createdAt" >= NOW() - INTERVAL '7 days'
     ORDER BY fh."userId", fh.percent DESC, fh."createdAt" DESC
   `);
-  const weekly = asRows2(weeklyResult).sort((a, b) => Number(b.bestPercent) - Number(a.bestPercent)).slice(0, lim).map((row, index) => {
+  const weekly = asRows2(weeklyResult).sort((a, b) => Number(b.bestPercent) - Number(a.bestPercent)).slice(0, lim).map((row, index2) => {
     const openId = String(row.openId || "");
     const deviceId = openId.startsWith("guest_") ? openId.slice(6) : openId;
     return {
-      rank: index + 1,
+      rank: index2 + 1,
       deviceId,
       name: row.name || "\u6478\u9C7C\u8FBE\u4EBA",
       bestPercent: Number(row.bestPercent),
@@ -3315,73 +2997,6 @@ async function listFeedbackPg(limit = 50) {
     createdAt: r.createdAt.toISOString()
   }));
 }
-async function getOrCreateInvitePg(deviceId) {
-  const user = await ensureGuestUser(deviceId);
-  return {
-    code: user.inviteCode || "",
-    ownerDeviceId: deviceId,
-    createdAt: user.createdAt.toISOString()
-  };
-}
-async function getInviteStatsPg(deviceId) {
-  const user = await getUserByOpenId(guestOpenId(deviceId));
-  if (!user) {
-    return { inviteCount: 0, claimedRewards: 0, pendingRewards: 0, uses: [] };
-  }
-  const database = await getDb();
-  if (!database) {
-    return { inviteCount: 0, claimedRewards: 0, pendingRewards: 0, uses: [] };
-  }
-  const rows = await database.select().from(invitations).where(eq11(invitations.inviterId, user.id));
-  const claimed = rows.filter((r) => r.rewardClaimed).length;
-  const pending = rows.filter((r) => !r.rewardClaimed).length;
-  return {
-    inviteCount: rows.length,
-    claimedRewards: claimed,
-    pendingRewards: pending,
-    uses: rows.map((r) => ({
-      id: String(r.id),
-      inviteeId: r.inviteeId,
-      rewardDays: r.rewardDays,
-      rewardClaimed: r.rewardClaimed,
-      createdAt: r.createdAt.toISOString()
-    }))
-  };
-}
-async function applyInviteCodePg(input) {
-  const code = String(input.inviteCode || "").trim().toUpperCase();
-  if (!code) throw new Error("inviteCode required");
-  const invitee = await ensureGuestUser(input.deviceId, input.name);
-  const database = await getDb();
-  if (!database) throw new Error("database unavailable");
-  const owners = await database.select().from(users).where(eq11(users.inviteCode, code)).limit(1);
-  if (owners.length === 0) throw new Error("invalid_invite");
-  const owner = owners[0];
-  if (owner.id === invitee.id) throw new Error("self_invite");
-  const existing = await database.select().from(invitations).where(eq11(invitations.inviteeId, invitee.id)).limit(1);
-  if (existing.length > 0) throw new Error("already_invited");
-  await database.insert(invitations).values({
-    inviterId: owner.id,
-    inviteeId: invitee.id,
-    rewardDays: 3,
-    rewardClaimed: false
-  });
-  await database.update(users).set({ invitedBy: owner.id, updatedAt: /* @__PURE__ */ new Date() }).where(eq11(users.id, invitee.id));
-  return { ok: true, inviterName: owner.name || "\u6478\u9C7C\u8FBE\u4EBA" };
-}
-async function claimInviteRewardPg(input) {
-  const user = await ensureGuestUser(input.deviceId);
-  const database = await getDb();
-  if (!database) throw new Error("database unavailable");
-  const id2 = Number(input.invitationId);
-  if (!Number.isFinite(id2)) throw new Error("invitationId required");
-  const rows = await database.select().from(invitations).where(and4(eq11(invitations.id, id2), eq11(invitations.inviterId, user.id))).limit(1);
-  if (rows.length === 0) throw new Error("not_found");
-  const row = rows[0];
-  if (row.rewardClaimed) throw new Error("already_claimed");
-  await database.update(invitations).set({ rewardClaimed: true }).where(eq11(invitations.id, row.id));
-  return { ok: true, rewardDays: row.rewardDays, claimed: true };
-}
 async function getProfilePg(deviceId) {
   const user = await ensureGuestUser(deviceId);
   let avatar = "";
@@ -3415,7 +3030,7 @@ async function updateProfilePg(input) {
     if (av && !unlocked.includes(av)) unlocked.unshift(av);
     patch.unlockedAvatars = JSON.stringify(unlocked.slice(0, 50));
   }
-  await database.update(users).set(patch).where(eq11(users.id, user.id));
+  await database.update(users).set(patch).where(eq10(users.id, user.id));
   return getProfilePg(input.deviceId);
 }
 
@@ -3543,71 +3158,6 @@ function registerLightApi(app) {
     const list = await usePostgres() ? await listFeedbackPg(limit) : listFeedback(limit);
     res.json({ ok: true, feedback: list });
   });
-  app.get("/api/light/invite", async (req, res) => {
-    try {
-      const deviceId = deviceIdOf(req);
-      if (await usePostgres()) {
-        const invite2 = await getOrCreateInvitePg(deviceId);
-        const stats2 = await getInviteStatsPg(deviceId);
-        res.json({ ok: true, ...invite2, ...stats2 });
-        return;
-      }
-      const invite = getOrCreateInvite(deviceId);
-      const stats = getInviteStats(deviceId);
-      res.json({ ok: true, ...invite, ...stats });
-    } catch (e) {
-      res.status(400).json({
-        ok: false,
-        error: e instanceof Error ? e.message : "bad_request"
-      });
-    }
-  });
-  app.post("/api/light/invite", rateLimit(6e4, 30), async (req, res) => {
-    try {
-      const body = req.body || {};
-      const action = String(body.action || "apply");
-      const deviceId = deviceIdOf(req, body);
-      const pg = await usePostgres();
-      if (action === "claim") {
-        const result2 = pg ? await claimInviteRewardPg({
-          deviceId,
-          invitationId: String(body.invitationId || "")
-        }) : claimInviteReward({
-          deviceId,
-          invitationId: String(body.invitationId || "")
-        });
-        res.json({ ok: true, ...result2 });
-        return;
-      }
-      if (action === "ensure") {
-        if (pg) {
-          const invite2 = await getOrCreateInvitePg(deviceId);
-          const stats2 = await getInviteStatsPg(deviceId);
-          res.json({ ok: true, ...invite2, ...stats2 });
-          return;
-        }
-        const invite = getOrCreateInvite(deviceId);
-        const stats = getInviteStats(deviceId);
-        res.json({ ok: true, ...invite, ...stats });
-        return;
-      }
-      const result = pg ? await applyInviteCodePg({
-        deviceId,
-        inviteCode: String(body.inviteCode || body.code || ""),
-        name: body.name != null ? String(body.name) : void 0
-      }) : applyInviteCode({
-        deviceId,
-        inviteCode: String(body.inviteCode || body.code || ""),
-        name: body.name != null ? String(body.name) : void 0
-      });
-      res.json({ ok: true, ...result });
-    } catch (e) {
-      res.status(400).json({
-        ok: false,
-        error: e instanceof Error ? e.message : "bad_request"
-      });
-    }
-  });
   app.get("/api/light/profile", async (req, res) => {
     try {
       const deviceId = deviceIdOf(req);
@@ -3707,6 +3257,130 @@ a{color:var(--gold);text-decoration:none}a:hover{text-decoration:underline}
 </html>`;
 }
 
+// server/_core/analytics.ts
+init_schema();
+init_db();
+init_deviceUser();
+import { sql as sql7 } from "drizzle-orm";
+var ALLOWED_EVENTS = /* @__PURE__ */ new Set([
+  "draw",
+  "share_click",
+  "card_saved",
+  "membership_view"
+]);
+var ALLOWED_PROP_KEYS = /* @__PURE__ */ new Set([
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "ref",
+  "channel",
+  "source",
+  "via",
+  "level",
+  "percent",
+  "streak",
+  "restored"
+]);
+var MAX_BATCH = 50;
+var MAX_CLIENT_AGE_MS = 31 * 24 * 60 * 60 * 1e3;
+var MAX_CLOCK_SKEW_MS = 5 * 60 * 1e3;
+function sanitizeProps(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const result = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (!ALLOWED_PROP_KEYS.has(key)) continue;
+    if (typeof raw === "string") {
+      const text2 = raw.trim().slice(0, 80);
+      if (text2) result[key] = text2;
+    } else if (typeof raw === "number" && Number.isFinite(raw)) {
+      result[key] = raw;
+    } else if (typeof raw === "boolean") {
+      result[key] = raw;
+    }
+  }
+  return Object.keys(result).length ? result : null;
+}
+function validatedClientTime(value, now = Date.now()) {
+  const timestamp2 = typeof value === "number" ? value : typeof value === "string" ? Date.parse(value) : Number.NaN;
+  if (!Number.isFinite(timestamp2) || timestamp2 < now - MAX_CLIENT_AGE_MS || timestamp2 > now + MAX_CLOCK_SKEW_MS) {
+    return new Date(now);
+  }
+  return new Date(timestamp2);
+}
+async function ensureAnalyticsSchema() {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql7`
+    CREATE TABLE IF NOT EXISTS analytics_events (
+      id BIGSERIAL PRIMARY KEY,
+      event VARCHAR(32) NOT NULL,
+      device_id VARCHAR(128) NOT NULL,
+      props JSONB,
+      client_occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql7`
+    ALTER TABLE analytics_events
+    ADD COLUMN IF NOT EXISTS client_occurred_at TIMESTAMPTZ
+  `);
+  await db.execute(sql7`
+    UPDATE analytics_events
+    SET client_occurred_at = created_at
+    WHERE client_occurred_at IS NULL
+  `);
+  await db.execute(sql7`
+    ALTER TABLE analytics_events
+    ALTER COLUMN client_occurred_at SET DEFAULT NOW()
+  `);
+  await db.execute(sql7`
+    ALTER TABLE analytics_events
+    ALTER COLUMN client_occurred_at SET NOT NULL
+  `);
+  await db.execute(sql7`
+    CREATE INDEX IF NOT EXISTS analytics_events_client_occurred_at_idx
+    ON analytics_events (client_occurred_at)
+  `);
+  await db.execute(sql7`
+    CREATE INDEX IF NOT EXISTS analytics_events_event_occurred_idx
+    ON analytics_events (event, client_occurred_at)
+  `);
+  await db.execute(sql7`
+    CREATE INDEX IF NOT EXISTS analytics_events_device_occurred_idx
+    ON analytics_events (device_id, client_occurred_at)
+  `);
+}
+function registerAnalyticsApi(app) {
+  app.post("/api/events", async (req, res) => {
+    try {
+      const db = await getDb();
+      if (!db) return res.status(503).json({ ok: false, error: "no_db" });
+      const body = req.body || {};
+      const rawEvents = Array.isArray(body.events) ? body.events.slice(0, MAX_BATCH) : [];
+      const values = rawEvents.flatMap((event) => {
+        if (!event || typeof event !== "object") return [];
+        const item = event;
+        const eventName = typeof item.event === "string" ? item.event : "";
+        const deviceId = normalizeDeviceId(item.deviceId);
+        if (!ALLOWED_EVENTS.has(eventName) || !deviceId) return [];
+        return [
+          {
+            event: eventName,
+            deviceId,
+            props: sanitizeProps(item.props),
+            clientOccurredAt: validatedClientTime(item.t)
+          }
+        ];
+      });
+      if (values.length) await db.insert(analyticsEvents).values(values);
+      return res.json({ ok: true, accepted: values.length });
+    } catch (error) {
+      console.warn("[analytics]", error);
+      return res.status(500).json({ ok: false });
+    }
+  });
+}
+
 // server/_core/apiOnlyEntry.ts
 var ALLOWED_ORIGINS2 = new Set(
   (process.env.MOYU_CORS_ORIGINS || "https://chillworks.ai,https://www.chillworks.ai,http://localhost:3000,http://127.0.0.1:3000").split(",").map((s) => s.trim()).filter(Boolean)
@@ -3754,6 +3428,9 @@ async function startServer() {
   app.use(webhookRouter);
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  await ensureAnalyticsSchema().catch((error) => {
+    console.warn("[analytics] schema initialization failed", error);
+  });
   app.get("/health", (_req, res) => {
     res.json({
       ok: true,
@@ -3763,6 +3440,7 @@ async function startServer() {
     });
   });
   registerLightApi(app);
+  registerAnalyticsApi(app);
   app.use(
     "/api/trpc",
     createExpressMiddleware({
