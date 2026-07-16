@@ -1,5 +1,5 @@
 {
-  "version": "validation-d1.2",
+  "version": "validation-d1.3",
   "releaseDate": "2026-07-16",
-  "note": "管理员密码登录、8 小时安全会话与 chillworks.ai/admin 运营后台"
+  "note": "修复保存图片：结果页「保存」走签文卡 Canvas，避开 html2canvas/oklch 失败"
 }
